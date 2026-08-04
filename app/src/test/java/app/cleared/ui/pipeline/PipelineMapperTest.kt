@@ -36,7 +36,7 @@ class PipelineMapperTest {
         val ui = state()
         assertEquals(247_119L, ui.owedKes)
         assertEquals("247,119", ui.heroDigits)
-        assertEquals(listOf("EUR 850.00", "USD 947.50"), ui.components)
+        assertEquals(listOf("USD 947.50", "EUR 850.00"), ui.components)
     }
 
     @Test

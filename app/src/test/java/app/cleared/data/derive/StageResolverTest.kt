@@ -70,6 +70,37 @@ class StageResolverTest {
         assertEquals(41L, StageResolver.daysInCurrentPhase(SampleData.pipelineById.getValue(6L), now))
     }
 
+    /**
+     * Undoing a tap that crossed the phase boundary must not reset the record's age.
+     *
+     * Found on a real device: a record two days into the work phase was advanced to Payout issued
+     * and undone, and its age pill dropped from `2d` to `0d`. Age is the first event *in* the
+     * current phase — the earliest one anywhere in the log — not the start of its latest run.
+     */
+    @Test
+    fun `an undo across the phase boundary does not reset the age`() {
+        val submitted = now.minus(Duration.ofDays(2))
+        val original = detailWith(
+            ev(1, Stage.SUBMITTED, submitted),
+            ev(2, Stage.IN_REVIEW, submitted.plus(Duration.ofHours(6))),
+            ev(3, Stage.APPROVED, submitted.plus(Duration.ofHours(12)))
+        )
+        assertEquals(2L, StageResolver.daysInCurrentPhase(original, now))
+
+        // Tap: Approved -> Payout issued, crossing violet to green.
+        val advanced = original.copy(
+            events = original.events + ev(4, Stage.PAYOUT_ISSUED, now.minus(Duration.ofSeconds(4)))
+        )
+        assertEquals(Stage.PAYOUT_ISSUED, StageResolver.recordStage(advanced))
+        assertEquals(0L, StageResolver.daysInCurrentPhase(advanced, now))
+
+        // Undo: back to Approved, appended rather than deleted.
+        val undone = advanced.copy(events = advanced.events + ev(5, Stage.APPROVED, now))
+        assertEquals(Stage.APPROVED, StageResolver.recordStage(undone))
+        assertEquals("the record is still two days into the work phase", 2L, StageResolver.daysInCurrentPhase(undone, now))
+        assertEquals("nothing was deleted", 5, undone.events.size)
+    }
+
     /** Every one of the eight sample records resolves to the stage the JSON gives it. */
     @Test
     fun `every sample record resolves to its documented stage`() {

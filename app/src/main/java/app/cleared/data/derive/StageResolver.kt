@@ -40,16 +40,21 @@ object StageResolver {
      * The first event of the phase the record is currently in. Age is measured from here, not from
      * record creation — a record that sat in review for a month and then moved to Approved
      * yesterday is one day into the work phase's last stage but 31 days into the phase.
+     *
+     * "First event **in** the current phase" is meant literally: the earliest event belonging to
+     * that phase anywhere in the log, not the start of the latest unbroken run of it.
+     *
+     * The difference is not academic. Undo appends the previous stage as a new event, so undoing a
+     * tap that crossed the phase boundary puts a fresh work-phase event at the top of a log whose
+     * earlier work-phase events are days old. Reading the run would restart the age at zero and the
+     * pill would tell the user their two-day-old record was logged this second.
      */
     fun currentPhaseStartedAt(detail: RecordDetail): Instant? {
-        val events = recordEvents(detail).sortedWith(byRecency)
-        val current = events.lastOrNull() ?: return null
-        var start = current.occurredAt
-        for (event in events.asReversed()) {
-            if (event.stage.phase != current.stage.phase) break
-            start = event.occurredAt
-        }
-        return start
+        val events = recordEvents(detail)
+        val current = latest(events) ?: return null
+        return events
+            .filter { it.stage.phase == current.stage.phase }
+            .minOfOrNull { it.occurredAt }
     }
 
     fun daysInCurrentPhase(detail: RecordDetail, now: Instant): Long {

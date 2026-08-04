@@ -3,6 +3,7 @@ package app.cleared.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import app.cleared.ui.nav.PlaceholderScreen
 import app.cleared.ui.pipeline.PipelineScreen
 import app.cleared.ui.pipeline.PipelineViewModel
 import app.cleared.ui.theme.Cleared
+import app.cleared.ui.theme.Dimens
 
 /**
  * The single Activity's content: a bottom-navigated `NavHost` with Pipeline as the start
@@ -87,7 +89,10 @@ fun ClearedApp() {
     }
 }
 
-/** 48 dp, title only, flat. */
+/**
+ * 48 dp, title only, flat. M3's own TopAppBar is 64 dp; the extra 16 dp of slack under the title
+ * pushed the hero visibly down the screen, so the height is pinned to the spec.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScreenTitle(title: String) {
@@ -98,6 +103,7 @@ private fun ScreenTitle(title: String) {
             titleContentColor = MaterialTheme.colorScheme.onSurface,
             scrolledContainerColor = MaterialTheme.colorScheme.background
         ),
-        windowInsets = WindowInsets(0.dp)
+        windowInsets = WindowInsets(0.dp),
+        modifier = Modifier.height(Dimens.topAppBar)
     )
 }

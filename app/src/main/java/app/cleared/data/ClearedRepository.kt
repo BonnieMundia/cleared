@@ -94,12 +94,19 @@ class ClearedRepository(private val db: ClearedDatabase) {
      */
     suspend fun revertTo(recordId: Long, stage: Stage, at: Instant = Instant.now()) {
         db.withTransaction {
+            // The undo must sort after the event it undoes. Ties are broken by the greater
+            // Stage.order, which would hand the tie to the advance and silently do nothing, so a
+            // same-millisecond undo is nudged a tick past it rather than left to lose.
+            val latest = db.stageEventDao().latestForRecord(recordId)?.occurredAt
+            val occurredAt =
+                if (latest != null && !at.isAfter(latest)) latest.plusMillis(1) else at
+
             val key = "undo:$recordId:${stage.name}:${UUID.randomUUID()}"
             db.stageEventDao().insert(
                 StageEventEntity(
                     recordId = recordId,
                     stage = stage,
-                    occurredAt = at,
+                    occurredAt = occurredAt,
                     source = EventSource.MANUAL,
                     idempotencyKey = key,
                     note = "Undo"

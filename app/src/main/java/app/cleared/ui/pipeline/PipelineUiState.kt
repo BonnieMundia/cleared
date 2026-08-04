@@ -120,9 +120,11 @@ object PipelineMapper {
             owedKes = totals.owedKes,
             workKes = totals.workKes,
             moneyKes = totals.moneyKes,
-            components = totals.owedByCurrency
-                .toSortedMap(compareBy { it.name })
-                .map { (currency, amount) -> MoneyFormat.format(currency, amount) },
+            // USD before EUR before KES, as the design writes them — not alphabetical.
+            components = Currency.entries
+                .mapNotNull { currency ->
+                    totals.owedByCurrency[currency]?.let { MoneyFormat.format(currency, it) }
+                },
             openCount = totals.openCount,
             overdueCount = totals.overdueCount,
             groups = listOfNotNull(needsAttention) + weekly,

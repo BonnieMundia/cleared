@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -90,6 +91,9 @@ fun PipelineScreen(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onSurface,
+        // The app shell has already consumed the system bars. Without this the status-bar inset is
+        // applied a second time here and pushes the hero a full app-bar's height down the screen.
+        contentWindowInsets = WindowInsets(0.dp),
         snackbarHost = { SnackbarHost(snackbars) },
         floatingActionButton = {
             FloatingActionButton(
@@ -97,7 +101,10 @@ fun PipelineScreen(
                 modifier = Modifier.size(Dimens.fab),
                 shape = ClearedShape.fab,
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
+                // SCREENS.md says "white plus", which is right for the light accent and wrong for
+                // the dark one — white on #71B5FF is barely legible. onPrimary is white in light
+                // and near-black in dark, which is what "white plus" meant.
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(
                     defaultElevation = 0.dp,
                     pressedElevation = 0.dp,
@@ -151,7 +158,7 @@ private fun HeroBlock(state: PipelineUiState) {
     ) {
         Text(
             text = "Owed to you",
-            style = Cleared.type.secondary,
+            style = Cleared.type.heroOverline,
             color = Cleared.tones.onSurfaceVariant3
         )
         Spacer(Modifier.height(6.dp))
@@ -176,7 +183,7 @@ private fun HeroBlock(state: PipelineUiState) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 state.components.forEach {
-                    Text(it, style = Cleared.type.tableFigure, color = Cleared.tones.onSurfaceVariant2)
+                    Text(it, style = Cleared.type.heroComponent, color = Cleared.tones.onSurfaceVariant2)
                 }
             }
         }

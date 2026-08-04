@@ -93,6 +93,10 @@ data class ClearedType(
     val heroFigure: TextStyle = mono(40.0, FontWeight.SemiBold, 1.0, -0.02),
     /** `KES` ahead of the hero amount, baseline-aligned. */
     val heroPrefix: TextStyle = mono(15.0, FontWeight.Medium, 1.0, 0.02),
+    /** `Owed to you`. */
+    val heroOverline: TextStyle = sans(12.0, FontWeight.Medium, 1.2),
+    /** `USD 947.50 · EUR 850.00` under the hero. */
+    val heroComponent: TextStyle = mono(12.5, FontWeight.Normal, 1.2),
     val sectionFigureLarge: TextStyle = mono(34.0, FontWeight.SemiBold, 1.0, -0.022),
     val sectionFigure: TextStyle = mono(29.0, FontWeight.SemiBold, 1.0, -0.022),
 
