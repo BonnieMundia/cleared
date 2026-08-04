@@ -1,0 +1,170 @@
+{
+  "_comment": "Seed data matching the Cleared design prototype exactly. Amounts are decimal strings; store as scaled minor units. Dates are ISO-8601 in Africa/Nairobi (UTC+3). 'today' in the prototype is 2026-08-02.",
+
+  "fxRates": [
+    { "currency": "USD", "midToKes": "128.40", "fetchedAt": "2026-08-02T08:02:00+03:00" },
+    { "currency": "EUR", "midToKes": "147.60", "fetchedAt": "2026-08-02T08:02:00+03:00" }
+  ],
+
+  "platforms": [
+    { "id": 1, "name": "Lumen Writers",       "kind": "WRITING",     "payCurrency": "EUR", "commissionPct": 0.05, "payoutDestination": "PAYONEER", "isCompany": false,
+      "stats": { "totalPaidKes": 486900, "hoursTotal": 214, "hoursUnpaid": 9,  "effectiveKesPerHour": 2275, "approvalPct": 88,  "settleP50Days": 24, "settleP90Days": 41 } },
+    { "id": 2, "name": "Kibo Studio",         "kind": "OWN_COMPANY", "payCurrency": "USD", "commissionPct": 0.00, "payoutDestination": "PAYONEER", "isCompany": true,
+      "stats": { "totalPaidKes": 274500, "hoursTotal": 186, "hoursUnpaid": 0,  "effectiveKesPerHour": 1476, "approvalPct": 100, "settleP50Days": 6,  "settleP90Days": 12 } },
+    { "id": 3, "name": "Halo Data",           "kind": "AI_TRAINING", "payCurrency": "USD", "commissionPct": 0.05, "payoutDestination": "PAYPAL",   "isCompany": false,
+      "stats": { "totalPaidKes": 312400, "hoursTotal": 268, "hoursUnpaid": 6,  "effectiveKesPerHour": 1166, "approvalPct": 94,  "settleP50Days": 11, "settleP90Days": 19, "settleMeanDays": 13.4, "driftDays90": 3,
+                 "stageDwellDays": { "SUBMITTED": 0.5, "IN_REVIEW": 5.1, "APPROVED": 0.5, "PAYOUT_ISSUED": 3.0, "RECEIVED": 1.9 } } },
+    { "id": 4, "name": "Northline Freelance", "kind": "MARKETPLACE", "payCurrency": "USD", "commissionPct": 0.10, "payoutDestination": "PAYPAL",   "isCompany": false,
+      "stats": { "totalPaidKes": 148200, "hoursTotal": 132, "hoursUnpaid": 4,  "effectiveKesPerHour": 1123, "approvalPct": 91,  "settleP50Days": 9,  "settleP90Days": 16 } },
+    { "id": 5, "name": "Vector Annotate",     "kind": "AI_TRAINING", "payCurrency": "USD", "commissionPct": 0.05, "payoutDestination": "PAYPAL",   "isCompany": false,
+      "stats": { "totalPaidKes": 38600,  "hoursTotal": 96,  "hoursUnpaid": 31, "effectiveKesPerHour": 402,  "approvalPct": 61,  "settleP50Days": 38, "settleP90Days": 61 } }
+  ],
+  "_platformNotes": "medianEffectiveRate across these five = 1166. Flag a platform when effectiveRate < 0.6 x median, i.e. below 700. Vector Annotate (402) is the only one flagged.",
+
+  "pipelineRecords": [
+    { "id": 1, "platform": "Halo Data",           "gross": "184.00", "currency": "USD", "stage": "RECEIVED",      "ageDays": 3,  "expectedWeek": "2026-08-03", "hoursWorked": 11.0, "hoursUnpaid": 0 },
+    { "id": 2, "platform": "Northline Freelance", "gross": "275.00", "currency": "USD", "stage": "PAYOUT_ISSUED", "ageDays": 5,  "expectedWeek": "2026-08-03", "hoursWorked": 16.5, "hoursUnpaid": 0 },
+    { "id": 3, "platform": "Halo Data",           "gross": "42.50",  "currency": "USD", "stage": "APPROVED",      "ageDays": 2,  "expectedWeek": "2026-08-03", "hoursWorked": 1.5,  "hoursUnpaid": 0 },
+    { "id": 4, "platform": "Kibo Studio",         "gross": "350.00", "currency": "USD", "stage": "APPROVED",      "ageDays": 4,  "expectedWeek": "2026-08-10", "hoursWorked": 22.0, "hoursUnpaid": 0 },
+    { "id": 5, "platform": "Lumen Writers",       "gross": "640.00", "currency": "EUR", "stage": "IN_REVIEW",     "ageDays": 31, "expectedWeek": "2026-08-10", "hoursWorked": 18.5, "hoursUnpaid": 0, "overdue": true },
+    { "id": 6, "platform": "Vector Annotate",     "gross": "96.00",  "currency": "USD", "stage": "SUBMITTED",     "ageDays": 41, "expectedWeek": "2026-08-10", "hoursWorked": 12.0, "hoursUnpaid": 3, "overdue": true },
+    { "id": 7, "platform": "Lumen Writers",       "gross": "210.00", "currency": "EUR", "stage": "SUBMITTED",     "ageDays": 1,  "expectedWeek": "2026-08-17", "hoursWorked": 6.0,  "hoursUnpaid": 0 },
+    { "id": 8, "platform": "Halo Data",           "gross": "15.75",  "currency": "USD", "stage": "REJECTED",      "ageDays": 9,  "expectedWeek": "2026-08-17", "hoursWorked": 1.5,  "hoursUnpaid": 0 }
+  ],
+
+  "derivedPipeline": {
+    "_comment": "Recompute these; listed so you can assert against them in tests.",
+    "owedKes": 247119,
+    "owedUsd": "947.50",
+    "owedEur": "850.00",
+    "workPhaseKes": 188183,
+    "moneyPhaseKes": 58936,
+    "openCount": 7,
+    "overdueCount": 2,
+    "weekSubtotalsKes": { "2026-08-03": 64393, "2026-08-10": 151730, "2026-08-17": 30996 }
+  },
+
+  "recordDetailExample": {
+    "_comment": "Frame 1e. A landed record shown end to end.",
+    "platform": "Lumen Writers",
+    "externalRef": "LW-2264",
+    "description": "Long-form writing · 3 briefs",
+    "gross": "640.00",
+    "currency": "EUR",
+    "hoursLogged": 18.5,
+    "endToEndDays": 22,
+    "stageEvents": [
+      { "stage": "SUBMITTED",     "occurredAt": "2026-06-12T09:14:00+03:00", "deltaDays": 0,  "source": "MANUAL" },
+      { "stage": "IN_REVIEW",     "occurredAt": "2026-06-12T18:02:00+03:00", "deltaDays": 0,  "source": "EMAIL_PARSE" },
+      { "stage": "APPROVED",      "occurredAt": "2026-06-19T11:40:00+03:00", "deltaDays": 7,  "source": "EMAIL_PARSE" },
+      { "stage": "PAYOUT_ISSUED", "occurredAt": "2026-06-30T08:05:00+03:00", "deltaDays": 11, "source": "EMAIL_PARSE" },
+      { "stage": "RECEIVED",      "occurredAt": "2026-07-02T14:22:00+03:00", "deltaDays": 2,  "source": "MANUAL", "note": "Payoneer" },
+      { "stage": "LANDED",        "occurredAt": "2026-07-04T10:07:00+03:00", "deltaDays": 2,  "source": "MANUAL", "note": "Equity Bank" }
+    ],
+    "phaseDurations": { "WORK": 18, "MONEY": 4 },
+    "feeLines": [
+      { "kind": "PLATFORM_COMMISSION", "amount": "32.00", "currency": "EUR", "label": "Platform commission 5%" },
+      { "kind": "WITHDRAWAL_FEE",      "amount": "1.50",  "currency": "EUR", "label": "Payoneer withdrawal fee" },
+      { "kind": "BANK_CREDIT_FEE",     "amount": "220",   "currency": "KES", "label": "Bank credit fee" }
+    ],
+    "conversion": { "convertedAmount": "606.50", "fromCurrency": "EUR", "rateApplied": "145.82", "midRate": "147.60", "spreadPct": 0.012 },
+    "finalKesCleared": 88220,
+    "totalCostKes": 6244,
+    "totalCostPct": 6.6,
+    "keptPct": 93.4
+  },
+
+  "wallets": [
+    { "provider": "PAYPAL",   "balances": [ { "currency": "USD", "amount": "412.60" } ], "kesEquivalent": 52978, "idleDays": 19 },
+    { "provider": "PAYONEER", "balances": [ { "currency": "USD", "amount": "268.00" }, { "currency": "EUR", "amount": "340.00" } ], "kesEquivalent": 84595, "idleDays": 19 }
+  ],
+  "walletTotalKes": 137573,
+
+  "costOfGettingPaid2026": {
+    "totalKes": 41380,
+    "pctOfLanded": 5.4,
+    "breakdown": [
+      { "kind": "FX_SPREAD",           "label": "Currency conversion spread", "amountKes": 24530 },
+      { "kind": "PLATFORM_COMMISSION", "label": "Platform commission",        "amountKes": 9240 },
+      { "kind": "WITHDRAWAL_FEE",      "label": "Withdrawal fees",            "amountKes": 7610 }
+    ]
+  },
+
+  "withdrawalRoutes": [
+    { "provider": "PAYONEER", "destination": "EQUITY_BANK", "label": "Payoneer → Equity Bank", "flatFee": "1.50", "feeCurrency": "USD", "spreadPct": 0.0200, "note": "USD account · 1–2 days" },
+    { "provider": "PAYONEER", "destination": "MPESA",       "label": "Payoneer → M-Pesa",      "flatFee": "2.00", "feeCurrency": "USD", "spreadPct": 0.0275, "note": "Same day · 150k daily cap" },
+    { "provider": "PAYPAL",   "destination": "EQUITY_BANK", "label": "PayPal → Equity Bank",   "flatFee": "4.99", "feeCurrency": "USD", "spreadPct": 0.0350, "note": "3–5 days" },
+    { "provider": "PAYPAL",   "destination": "MPESA",       "label": "PayPal → M-Pesa",        "flatFee": "3.50", "feeCurrency": "USD", "spreadPct": 0.0400, "note": "1–2 days" }
+  ],
+  "_routeFormula": "netKes = (amount - flatFee) * midRate * (1 - spreadPct). At USD 300 the ranking is Payoneer→Equity 37,560 (best), Payoneer→M-Pesa 37,211 (−349), PayPal→Equity 36,556 (−1,004), PayPal→M-Pesa 36,547 (−1,013).",
+
+  "tax2026": {
+    "personalIncomeKes": 742180,
+    "personalRecordCount": 96,
+    "personalPlatformCount": 4,
+    "personalSetAsideRate": 0.25,
+    "personalSetAsideKes": 185545,
+    "companyName": "Kibo Studio",
+    "companyIncomeKes": 418600,
+    "companyRecordCount": 22,
+    "turnoverTaxRate": 0.03,
+    "companyTaxKes": 12558,
+    "recommendedSetAsideKes": 198103,
+    "actualSetAsideKes": 164000,
+    "shortfallKes": 34103,
+    "setAsideLocation": "Equity savings",
+    "setAsideLastMoved": "2026-07-28",
+    "exportRecordCount": 118
+  },
+
+  "syncState": {
+    "offlineSince": "2026-08-02T09:14:00+03:00",
+    "lastSyncAt": "2026-08-02T09:14:00+03:00",
+    "queuedCount": 3,
+    "conflictCount": 1,
+    "bytesToSend": 4198,
+    "queue": [
+      { "seq": 1, "label": "Lumen Writers → In review",           "createdAt": "2026-08-02T09:18:00+03:00", "type": "STAGE_TRANSITION", "state": "WAITING" },
+      { "seq": 2, "label": "New record · Halo Data USD 184.00",   "createdAt": "2026-08-02T09:26:00+03:00", "type": "RECORD_CREATE",    "state": "WAITING" },
+      { "seq": 3, "label": "Northline → Payout issued",           "createdAt": "2026-08-02T09:33:00+03:00", "type": "STAGE_TRANSITION", "state": "RETRYING", "attempts": 2, "maxAttempts": 5, "nextAttemptInMinutes": 4 }
+    ],
+    "conflict": {
+      "recordId": 3,
+      "platform": "Halo Data",
+      "amount": "42.50",
+      "currency": "USD",
+      "local":  { "stage": "APPROVED", "occurredAt": "2026-08-02T09:31:00+03:00", "source": "MANUAL" },
+      "remote": { "stage": "REJECTED", "occurredAt": "2026-08-02T09:12:00+03:00", "source": "PLATFORM_API" },
+      "hoursAtStake": 1.5
+    }
+  },
+
+  "withdrawAdvisorExample": {
+    "wallet": "PAYPAL",
+    "balance": "412.60",
+    "currency": "USD",
+    "currentCostPct": 4.71,
+    "currentCostKes": 2495,
+    "costCurve": [
+      { "amountUsd": 100, "costPct": 8.3 },
+      { "amountUsd": 200, "costPct": 5.9 },
+      { "amountUsd": 300, "costPct": 5.1 },
+      { "amountUsd": 413, "costPct": 4.7, "isCurrent": true },
+      { "amountUsd": 600, "costPct": 4.3 },
+      { "amountUsd": 800, "costPct": 4.1 }
+    ],
+    "splitPenaltyKes": 1283,
+    "destinationAdvice": { "platform": "Halo Data", "fromPct": 4.71, "toPct": 2.37, "annualSavingKes": 12400 },
+    "breakEvenAlertPct": 4.5,
+    "fxExposure": { "usd": "680.60", "eur": "340.00", "swingPct": 3, "swingKes": 4127 }
+  },
+
+  "discoveryListings": [
+    { "platform": "Northline Freelance", "title": "Landing page copy, fixed price",       "kind": "Writing",     "statedPay": "400.00", "currency": "USD", "estHours": 14, "assessmentHours": 0, "projectedKesPerHour": 3668, "riskAdjustedKesPerHour": 3338, "settleDays": 9,  "approvalPct": 91, "source": "platform board · 41 min ago", "note": "New client, no history on the platform. Escrow releases on approval, median 9 d." },
+    { "platform": "Lumen Writers",       "title": "Technical explainer series, 6 pieces", "kind": "Writing",     "statedPay": "540.00", "currency": "EUR", "estHours": 34, "assessmentHours": 0, "projectedKesPerHour": 2344, "riskAdjustedKesPerHour": 2063, "settleDays": 24, "approvalPct": 88, "source": "platform board · 2 h ago",   "note": "You are already onboarded. Slowest payer you use — 24 d median, 41 d at p90." },
+    { "platform": "Halo Data",           "title": "Dialogue rating, Swahili–English",     "kind": "AI training", "statedPay": "360.00", "currency": "USD", "estHours": 26, "assessmentHours": 2, "projectedKesPerHour": 1651, "riskAdjustedKesPerHour": 1552, "settleDays": 11, "approvalPct": 94, "source": "platform board · 3 h ago",   "note": "Language pair pays a premium over your usual queue here. 2 h calibration set is unpaid." },
+    { "platform": "Meridian Transcribe", "title": "Audio QA, 12 h per week",              "kind": "AI training", "statedPay": "210.00", "currency": "USD", "estHours": 24, "assessmentHours": 5, "projectedKesPerHour": 930,  "riskAdjustedKesPerHour": null, "settleDays": null, "approvalPct": null, "source": "community feed · 5 h ago", "note": "Platform you have never used. No settle-time history, so the days figure is their claim, not your data." },
+    { "platform": "Vector Annotate",     "title": "Bounding box batch, 900 frames",       "kind": "AI training", "statedPay": "65.00",  "currency": "USD", "estHours": 9,  "assessmentHours": 3, "projectedKesPerHour": 696,  "riskAdjustedKesPerHour": 425,  "settleDays": 38, "approvalPct": 61, "source": "platform board · 6 h ago",  "note": "Your worst platform. 39% of what you submit here is rejected, and the hours still count." }
+  ],
+  "_discoveryNotes": "Sorted by projectedKesPerHour desc. Flag any listing below the user's median effective rate (1166). Header shows the best available and its multiple of the median: 3668 / 1166 = 3.1x. Scan source in the prototype: '6 platform boards and 2 community feeds', last run 09:14."
+}
