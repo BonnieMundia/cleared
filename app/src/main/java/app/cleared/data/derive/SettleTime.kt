@@ -1,0 +1,96 @@
+package app.cleared.data.derive
+
+import app.cleared.data.model.Stage
+import java.time.Duration
+import java.time.Instant
+import kotlin.math.ceil
+
+/**
+ * Per-platform settle-time distribution — frame `2b`.
+ *
+ * Over records that reached LANDED, `landedAt − submittedAt`, then p50, p90, and the 90-day drift.
+ * Also the mean dwell time per stage, which is what shows that nearly half the wait sits in
+ * IN_REVIEW — a work-phase problem, not a payment problem.
+ */
+data class SettleTimeStats(
+    val platformId: Long,
+    val sampleDays: List<Long>,
+    val p50Days: Int?,
+    val p90Days: Int?,
+    val meanDays: Double?,
+    val driftDays90: Int?,
+    val stageDwellDays: Map<Stage, Double>
+) {
+    val sampleCount: Int get() = sampleDays.size
+}
+
+object SettleTime {
+
+    /**
+     * Nearest-rank percentile on the sorted sample: the smallest value at or above the rank
+     * `ceil(p × n)`. No interpolation — these are whole days and the figure is a threshold a record
+     * is compared against, so a real observation is the honest answer.
+     */
+    fun percentile(sortedDays: List<Long>, p: Double): Int? {
+        if (sortedDays.isEmpty()) return null
+        val rank = ceil(p * sortedDays.size).toInt().coerceIn(1, sortedDays.size)
+        return sortedDays[rank - 1].toInt()
+    }
+
+    fun of(platformId: Long, states: List<RecordState>, now: Instant): SettleTimeStats {
+        val mine = states.filter { it.record.platformId == platformId }
+        val landed = mine.filter { it.displayStage == Stage.LANDED }
+
+        val days = landed.mapNotNull { endToEndDays(it) }.sorted()
+        val recent = landed.filter { state ->
+            landedAt(state)?.isAfter(now.minus(Duration.ofDays(90))) == true
+        }.mapNotNull { endToEndDays(it) }.sorted()
+        val older = landed.filter { state ->
+            landedAt(state)?.isBefore(now.minus(Duration.ofDays(90))) == true
+        }.mapNotNull { endToEndDays(it) }.sorted()
+
+        val p50Now = percentile(recent, 0.50)
+        val p50Then = percentile(older, 0.50)
+
+        return SettleTimeStats(
+            platformId = platformId,
+            sampleDays = days,
+            p50Days = percentile(days, 0.50),
+            p90Days = percentile(days, 0.90),
+            meanDays = if (days.isEmpty()) null else days.average(),
+            driftDays90 = if (p50Now != null && p50Then != null) p50Now - p50Then else null,
+            stageDwellDays = dwellByStage(mine)
+        )
+    }
+
+    /** p90 per platform, recomputed from scratch — call it whenever a record lands. */
+    fun p90ByPlatform(platformIds: Collection<Long>, states: List<RecordState>, now: Instant): Map<Long, Int> =
+        platformIds.mapNotNull { id -> of(id, states, now).p90Days?.let { id to it } }.toMap()
+
+    private fun submittedAt(state: RecordState): Instant? =
+        StageResolver.recordEvents(state.detail)
+            .filter { it.stage == Stage.SUBMITTED }
+            .minByOrNull { it.occurredAt }?.occurredAt
+
+    private fun landedAt(state: RecordState): Instant? =
+        state.detail.events.filter { it.stage == Stage.LANDED }.maxByOrNull { it.occurredAt }?.occurredAt
+
+    fun endToEndDays(state: RecordState): Long? {
+        val from = submittedAt(state) ?: return null
+        val to = landedAt(state) ?: return null
+        return Duration.between(from, to).toDays()
+    }
+
+    /** Mean days spent in each stage, over every record that left that stage. */
+    private fun dwellByStage(states: List<RecordState>): Map<Stage, Double> {
+        val totals = mutableMapOf<Stage, MutableList<Long>>()
+        for (state in states) {
+            val events = StageResolver.recordEvents(state.detail).sortedBy { it.occurredAt }
+            events.zipWithNext { a, b ->
+                totals.getOrPut(a.stage) { mutableListOf() }
+                    .add(Duration.between(a.occurredAt, b.occurredAt).toHours())
+            }
+        }
+        return totals.mapValues { (_, hours) -> hours.average() / 24.0 }
+    }
+}
