@@ -31,11 +31,14 @@ val LOnSurfaceStrong   = Color(0xFF393E42)
 val LOnSurfaceVariant  = Color(0xFF51565B)
 val LOnSurfaceVariant2 = Color(0xFF5F6469)
 val LOnSurfaceVariant3 = Color(0xFF65696F)
-val LLabel             = Color(0xFF6D7277)
-val LTertiary          = Color(0xFF777B7F)
-val LTertiary2         = Color(0xFF83878B)
-val LTertiary3         = Color(0xFF8F9397)
-val LGhost             = Color(0xFFA2A5A8)
+// Raised to WCAG AA — see the note at the foot of this file. Was #6D7277 / #777B7F / #83878B /
+// #8F9397 / #A2A5A8, which measured 4.40 / 3.94 / 3.34 / 2.86 / 2.34 against the surfaces they
+// actually sit on.
+val LLabel             = Color(0xFF696E73)
+val LTertiary          = Color(0xFF696E73)
+val LTertiary2         = Color(0xFF696E73)
+val LTertiary3         = Color(0xFF696E73)
+val LGhost             = Color(0xFF888B8E)
 val LAccent            = Color(0xFF1364B0)
 val LAccentPressed     = Color(0xFF0052A1)
 val LAccentContainer   = Color(0xFFCBE2FD)
@@ -83,9 +86,11 @@ val DOnSurfaceVariant  = Color(0xFFBABEC3)
 val DOnSurfaceVariant2 = Color(0xFFADB1B6)
 val DOnSurfaceVariant3 = Color(0xFFA1A5A9)
 val DLabel             = Color(0xFF95999D)
-val DTertiary          = Color(0xFF83878B)
-val DTertiary2         = Color(0xFF7D8185)
-val DGhost             = Color(0xFF66696D)
+// Raised to WCAG AA. Was #83878B / #7D8185 / #66696D, which measured 4.15 / 3.89 / 2.72 against
+// the darkest surface each sits on. `label` needs no change in dark.
+val DTertiary          = Color(0xFF8D9195)
+val DTertiary2         = Color(0xFF8D9195)
+val DGhost             = Color(0xFF707377)
 val DAccent            = Color(0xFF71B5FF)
 val DOnAccent          = Color(0xFF021429)
 val DAccentPressed     = Color(0xFF89C9FF)
@@ -125,10 +130,30 @@ val DRejectTint        = Color(0xFF2D1B19)
 // instead of toward white — and are the only colours in this file that are not transcribed.
 // Flagged for the designer to overwrite.
 val DOnSurfaceStrong   = Color(0xFFD5D9DE) // between DOnSurface and DOnSurfaceVariant
-val DTertiary3         = Color(0xFF74787C) // one step below DTertiary2
+val DTertiary3         = Color(0xFF8D9195) // collapsed into the AA caption tone with tertiary/2
 val DAccentTintHover   = Color(0xFF12243A) // pale accent tint, inverted
 val DWorkMid           = Color(0xFF7A66A8) // between DWorkOutline and DWork
 val DMoneyMid          = Color(0xFF3D7F5F) // second segment of the cost bar
 val DMoneyPale         = Color(0xFF2C5A44) // third segment of the cost bar
 val DMoneyTint         = Color(0xFF12241B) // "bigger saving available" card background
 val DOverdueBar        = Color(0xFF5A431E) // unpaid-hours portion of the platform hour bar
+
+// ── Why the supporting-text ramp is shorter than DESIGN_TOKENS.md's ───────
+//
+// The tables give eight steps of supporting text, from `onSurfaceVariant` down to `ghost`. They are
+// used at 11–11.5 sp, which WCAG counts as normal text and therefore holds to 4.5:1. Measured
+// against the surfaces they actually sit on, only the first four steps clear that bar: `label`
+// reached 4.40:1, `tertiary` 3.94, `tertiary2` 3.34, `tertiary3` 2.86 and `ghost` 2.34.
+//
+// The band between "just legible" and "already used by onSurfaceVariant3" is about one step wide,
+// so eight distinguishable AA-compliant greys do not exist to be had. DESIGN_TOKENS.md states the
+// tie-breaker itself — "this app is read outdoors" — so legibility wins and the ramp loses steps:
+// `label`, `tertiary`, `tertiary2` and `tertiary3` collapse onto one compliant tone per theme.
+//
+// The token names are all kept, so call sites and the design vocabulary are unchanged and a future
+// re-spacing is a one-line edit here. The visible consequence is that captions and the KES
+// equivalents under row amounts read a little stronger than the prototype shows them.
+//
+// `ghost` is the exception: it is the 40 sp zero-value hero in the empty state, which is large text
+// and holds to 3:1 rather than 4.5:1. It is set to exactly that and must not be used for the 11 sp
+// rank numerals on the Platforms cards — those take `tertiary`.

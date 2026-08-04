@@ -61,24 +61,6 @@ class ContrastTest {
         assertAtLeast(4.5, "accent hero on bg", DAccent, DBg)
     }
 
-    /**
-     * The one place a *primary* tone lands short: the uppercase week-group overline on Pipeline.
-     *
-     * `label` #6D7277 reaches 4.85:1 on plain surface, but the week header sits on
-     * `surfaceContainer` #F2F4F5 and that drops it to 4.40:1 — a 2% shortfall against AA at 11 sp
-     * SemiBold, which WCAG counts as normal text rather than large. Dark is unaffected: the same
-     * overline measures well clear on both dark backgrounds.
-     *
-     * Darkening `label` to about #676C71 would clear it. That is a token change, so it is the
-     * designer's call and this test records the current value rather than pre-empting it.
-     */
-    @Test
-    fun `the week-group overline lands just under AA on its own header band`() {
-        val onHeader = ratio(LLabel, LSurfaceContainer)
-        assertTrue("label on surfaceContainer is %.2f:1".format(onHeader), onHeader in 4.3..4.5)
-        assertAtLeast(4.5, "the same overline on plain surface", LLabel, LSurface)
-    }
-
     /** Every stage chip: its text against its own container, in both themes. */
     @Test
     fun `stage chips pass AA on their containers`() {
@@ -96,32 +78,58 @@ class ContrastTest {
     }
 
     /**
-     * The caption tier — `tertiary`, `tertiary2`, `tertiary3` and `ghost`, which carry the KES
-     * equivalent under a row amount, stat-column labels and the components-sheet annotations.
+     * The supporting-text tier — `label`, `tertiary`, `tertiary2`, `tertiary3` — against **every**
+     * surface it can land on, not just the flattering one.
      *
-     * These sit at 11–11.5 sp, which WCAG counts as normal text, and they do **not** reach 4.5:1
-     * against white: `tertiary` measures about 4.3:1, `tertiary2` about 3.3:1 and `tertiary3` about
-     * 2.9:1. They clear the 3:1 large-text threshold but not the one README.md claims for them.
+     * These carry the week-group overline, the KES equivalent under a row amount, the stat-column
+     * labels and the components-sheet annotations, all at 11–11.5 sp. WCAG counts that as normal
+     * text, so the bar is 4.5:1 and the worst surface is the one that decides: the 8 dp spacer band
+     * in light, the chip track in dark.
      *
-     * DESIGN_TOKENS.md says explicitly "do not lighten the secondary and tertiary text tones", so
-     * this test holds them at the line they actually meet rather than darkening them unilaterally.
-     * Raising them is a design decision, not a build one.
+     * The four tones share one value per theme. See the note at the foot of Color.kt: eight
+     * distinguishable AA-compliant greys do not fit in the band between legible and already-taken.
      */
     @Test
-    fun `the caption tier clears 3 to 1 but not AA for normal text`() {
-        assertAtLeast(3.0, "light tertiary on surface", LTertiary, LSurface)
-        assertAtLeast(3.0, "light tertiary2 on surface", LTertiary2, LSurface)
-        assertAtLeast(2.8, "light tertiary3 on surface", LTertiary3, LSurface)
-
-        assertAtLeast(3.0, "dark tertiary on surface", DTertiary, DSurface)
-        assertAtLeast(3.0, "dark tertiary2 on surface", DTertiary2, DSurface)
-        assertAtLeast(2.8, "dark tertiary3 on surface", DTertiary3, DSurface)
-
-        // The shortfall, stated as a fact rather than left implicit.
-        assertTrue(
-            "tertiary2 reaching AA would mean the design brief had been overruled",
-            ratio(LTertiary2, LSurface) < 4.5
+    fun `the supporting-text tier passes AA on every surface it sits on`() {
+        val lightSurfaces = mapOf(
+            "surface" to LSurface, "surfaceLow" to LSurfaceLow, "surfaceContainer" to LSurfaceContainer,
+            "surfaceHigh" to LSurfaceHigh, "navBar" to LNavBar, "bg" to LBg
         )
+        val darkSurfaces = mapOf(
+            "surface" to DSurface, "surfaceLow" to DSurfaceLow, "surfaceHigh" to DSurfaceHigh,
+            "chipBg" to DChipBg, "navBar" to DNavBar, "bg" to DBg
+        )
+
+        for ((name, bg) in lightSurfaces) {
+            assertAtLeast(4.5, "light label on $name", LLabel, bg)
+            assertAtLeast(4.5, "light tertiary on $name", LTertiary, bg)
+            assertAtLeast(4.5, "light tertiary2 on $name", LTertiary2, bg)
+            assertAtLeast(4.5, "light tertiary3 on $name", LTertiary3, bg)
+        }
+        for ((name, bg) in darkSurfaces) {
+            assertAtLeast(4.5, "dark label on $name", DLabel, bg)
+            assertAtLeast(4.5, "dark tertiary on $name", DTertiary, bg)
+            assertAtLeast(4.5, "dark tertiary2 on $name", DTertiary2, bg)
+            assertAtLeast(4.5, "dark tertiary3 on $name", DTertiary3, bg)
+        }
+    }
+
+    /**
+     * `ghost` is the one tone held to 3:1 rather than 4.5:1, because its only job is the 40 sp
+     * zero-value hero in the empty state and that is large text.
+     *
+     * The test also pins that it does *not* reach AA, so a call site needing 4.5:1 cannot quietly
+     * reach for it — the 11 sp rank numerals on the Platforms cards take `tertiary` instead.
+     */
+    @Test
+    fun `ghost meets the large-text threshold and only that`() {
+        assertAtLeast(3.0, "light ghost on bg", LGhost, LBg)
+        assertAtLeast(3.0, "light ghost on surface", LGhost, LSurface)
+        assertAtLeast(3.0, "dark ghost on bg", DGhost, DBg)
+        assertAtLeast(3.0, "dark ghost on surface", DGhost, DSurface)
+
+        assertTrue("ghost is a large-text tone; small text takes tertiary", ratio(LGhost, LBg) < 4.5)
+        assertTrue("ghost is a large-text tone; small text takes tertiary", ratio(DGhost, DBg) < 4.5)
     }
 
     /** A rail has to be distinguishable from the surface it sits on, in both themes. */
