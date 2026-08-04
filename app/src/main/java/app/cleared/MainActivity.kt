@@ -9,20 +9,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.cleared.ui.theme.ClearedTheme
 
 /**
  * The single Activity. Compose Navigation hangs off this once there are destinations to host —
- * scaffolding only for now, so no screens and no nav graph.
+ * theme only for now, so no screens and no nav graph.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            // Placeholder theme. Replaced by the real Color/Type/Theme in step 2.
-            MaterialTheme {
+            ClearedTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
                     content = {}
