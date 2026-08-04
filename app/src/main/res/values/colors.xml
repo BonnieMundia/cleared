@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only the handful of colours the platform needs outside Compose.
+         The full token set lives in Color.kt from step 2. -->
+    <color name="window_background">#F7F9FA</color>
+    <color name="ic_launcher_background">#F7F9FA</color>
+</resources>
