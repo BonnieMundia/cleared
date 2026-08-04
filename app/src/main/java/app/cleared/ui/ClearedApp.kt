@@ -1,0 +1,103 @@
+package app.cleared.ui
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import app.cleared.ui.nav.ClearedBottomBar
+import app.cleared.ui.nav.ClearedDestination
+import app.cleared.ui.nav.PlaceholderScreen
+import app.cleared.ui.pipeline.PipelineScreen
+import app.cleared.ui.pipeline.PipelineViewModel
+import app.cleared.ui.theme.Cleared
+
+/**
+ * The single Activity's content: a bottom-navigated `NavHost` with Pipeline as the start
+ * destination. Record detail, Add record, Sync and the analysis screens are pushed or modal and
+ * never tabs.
+ */
+@Composable
+fun ClearedApp() {
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val current = ClearedDestination.visible
+        .firstOrNull { it.route == backStackEntry?.destination?.route }
+        ?: ClearedDestination.Pipeline
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            ClearedBottomBar(
+                current = current,
+                onSelect = { destination ->
+                    navController.navigate(destination.route) {
+                        popUpTo(ClearedDestination.Pipeline.route) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        NavHost(
+            navController = navController,
+            startDestination = ClearedDestination.Pipeline.route,
+            modifier = Modifier.padding(padding).fillMaxSize()
+        ) {
+            composable(ClearedDestination.Pipeline.route) {
+                val viewModel: PipelineViewModel = viewModel(factory = PipelineViewModel.Factory)
+                val state by viewModel.state.collectAsState()
+                val undo by viewModel.pendingUndo.collectAsState()
+
+                Column(Modifier.fillMaxSize()) {
+                    ScreenTitle("Pipeline")
+                    PipelineScreen(
+                        state = state,
+                        pendingUndo = undo,
+                        modifier = Modifier.weight(1f),
+                        onAdvance = { viewModel.advance(it.id, it.platformName) },
+                        onUndo = viewModel::undo,
+                        onUndoHandled = viewModel::undoHandled
+                    )
+                }
+            }
+
+            ClearedDestination.visible
+                .filter { it != ClearedDestination.Pipeline }
+                .forEach { destination ->
+                    composable(destination.route) { PlaceholderScreen(destination) }
+                }
+        }
+    }
+}
+
+/** 48 dp, title only, flat. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScreenTitle(title: String) {
+    TopAppBar(
+        title = { Text(title, style = Cleared.type.screenTitle) },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.background,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            scrolledContainerColor = MaterialTheme.colorScheme.background
+        ),
+        windowInsets = WindowInsets(0.dp)
+    )
+}

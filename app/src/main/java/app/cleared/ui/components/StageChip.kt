@@ -1,5 +1,7 @@
 package app.cleared.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -43,7 +46,16 @@ fun StageChip(
         return
     }
 
-    val (container, onContainer) = chipColors(stage)
+    val (targetContainer, targetOnContainer) = chipColors(stage)
+
+    // Cross-fades with the rail when a record crosses the phase boundary. See PhaseCrossfadeMillis.
+    val container by animateColorAsState(
+        targetContainer, tween(PhaseCrossfadeMillis), label = "stageChipContainer"
+    )
+    val onContainer by animateColorAsState(
+        targetOnContainer, tween(PhaseCrossfadeMillis), label = "stageChipContent"
+    )
+
     Box(
         modifier = modifier
             .background(container, ClearedShape.stageChip)

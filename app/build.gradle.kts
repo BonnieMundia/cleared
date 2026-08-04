@@ -48,6 +48,8 @@ android {
 
     buildFeatures {
         compose = true
+        // DevSeed is gated on BuildConfig.DEBUG so it cannot reach a release build.
+        buildConfig = true
     }
 
     packaging {

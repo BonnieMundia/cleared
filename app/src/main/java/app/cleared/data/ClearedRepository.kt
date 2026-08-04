@@ -2,6 +2,7 @@ package app.cleared.data
 
 import androidx.room.withTransaction
 import app.cleared.data.db.ClearedDatabase
+import app.cleared.data.db.entity.PlatformEntity
 import app.cleared.data.db.entity.StageEventEntity
 import app.cleared.data.db.entity.SyncOpEntity
 import app.cleared.data.derive.Pipeline
@@ -29,6 +30,8 @@ class ClearedRepository(private val db: ClearedDatabase) {
 
     fun observeRecordStates(): Flow<List<RecordState>> =
         db.recordDao().observeDetails().map { details -> details.map(RecordState::of) }
+
+    fun observePlatforms(): Flow<List<PlatformEntity>> = db.platformDao().observeAll()
 
     fun observeRates(): Flow<Map<Currency, BigDecimal>> =
         db.fxRateDao().observeAll().map { rows -> rows.associate { it.currency to it.midToKes } }
