@@ -34,6 +34,8 @@ import app.cleared.ui.nav.ClearedDestination
 import app.cleared.ui.nav.PlaceholderScreen
 import app.cleared.ui.pipeline.PipelineScreen
 import app.cleared.ui.pipeline.PipelineViewModel
+import app.cleared.ui.platforms.PlatformsScreen
+import app.cleared.ui.platforms.PlatformsViewModel
 import app.cleared.ui.record.RecordDetailScreen
 import app.cleared.ui.record.RecordDetailViewModel
 import app.cleared.ui.theme.Cleared
@@ -115,8 +117,22 @@ fun ClearedApp() {
                 }
             }
 
+            composable(ClearedDestination.Platforms.route) {
+                val viewModel: PlatformsViewModel = viewModel(factory = PlatformsViewModel.Factory)
+                val state by viewModel.state.collectAsState()
+
+                Column(Modifier.fillMaxSize()) {
+                    ScreenTitle("Platforms")
+                    PlatformsScreen(
+                        state = state,
+                        modifier = Modifier.weight(1f),
+                        onSelectSort = viewModel::selectSort
+                    )
+                }
+            }
+
             ClearedDestination.visible
-                .filter { it != ClearedDestination.Pipeline }
+                .filter { it != ClearedDestination.Pipeline && it != ClearedDestination.Platforms }
                 .forEach { destination ->
                     composable(destination.route) { PlaceholderScreen(destination) }
                 }

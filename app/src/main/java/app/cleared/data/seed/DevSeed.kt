@@ -21,6 +21,9 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.ceil
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * The eight pipeline records and five platforms from design/sample_data.json, so a debug build has
@@ -89,6 +92,151 @@ object DevSeed {
         // and one split record so the part-paid rail is visible.
         reversed(db, 9, 3, "200.00", Currency.USD, 17, monday)
         partPaid(db, 10, 1, monday)
+
+        // The history behind the platform aggregates. Without it every effective rate on frame `1b`
+        // is zero, because nothing has ever landed.
+        //
+        // The figures are chosen so that history plus the open records above reproduce
+        // design/sample_data.json exactly: Lumen 2,275 KES/h, Kibo 1,476, Halo 1,166, Northline
+        // 1,123 and Vector Annotate 402 — the last of those the only platform under 0.6x the median.
+        history(db, LUMEN, Currency.EUR, landed = 22, rejected = 3, clearedKes = 399_408, hours = 169.5, unpaid = 9.0, p50 = 24, p90 = 41, idFrom = 100)
+        history(db, KIBO, Currency.USD, landed = 8, rejected = 0, clearedKes = 274_500, hours = 164.0, unpaid = 0.0, p50 = 6, p90 = 12, idFrom = 200)
+        history(db, HALO, Currency.USD, landed = 15, rejected = 0, clearedKes = 312_400, hours = 245.0, unpaid = 6.0, p50 = 11, p90 = 19, idFrom = 300)
+        history(db, NORTHLINE, Currency.USD, landed = 10, rejected = 1, clearedKes = 148_200, hours = 115.5, unpaid = 4.0, p50 = 9, p90 = 16, idFrom = 400)
+        history(db, VECTOR, Currency.USD, landed = 11, rejected = 7, clearedKes = 38_600, hours = 81.0, unpaid = 28.0, p50 = 38, p90 = 61, idFrom = 500)
+    }
+
+    private const val LUMEN = 1L
+    private const val KIBO = 2L
+    private const val HALO = 3L
+    private const val NORTHLINE = 4L
+    private const val VECTOR = 5L
+
+    /**
+     * Landed and rejected history for one platform.
+     *
+     * Cleared KES divides across the landed records with the remainder on the last, and the unpaid
+     * hours load onto the rejected records first — assessments that never turned into income are
+     * exactly what that column is for. The flat 100.00 rate makes a record's cleared KES its gross
+     * to the shilling, which keeps the seed about the aggregates rather than about FX.
+     */
+    private suspend fun history(
+        db: ClearedDatabase,
+        platformId: Long,
+        currency: Currency,
+        landed: Int,
+        rejected: Int,
+        clearedKes: Long,
+        hours: Double,
+        unpaid: Double,
+        p50: Int,
+        p90: Int,
+        idFrom: Long
+    ) {
+        val total = landed + rejected
+        val settleDays = durationsWith(landed, p50, p90)
+        val hourTenths = distribute((hours * 10).roundToInt().toLong(), total)
+        val unpaidTenths = distributeUnpaid((unpaid * 10).roundToInt().toLong(), hourTenths, rejected)
+        val shares = distribute(clearedKes, landed)
+
+        var id = idFrom
+        for (i in 0 until landed) {
+            val landedAt = Instant.now().minus(Duration.ofDays(30L + i * 9))
+            val submittedAt = landedAt.minus(Duration.ofDays(settleDays[i]))
+            val recordId = id++
+            db.recordDao().insert(
+                EarningRecordEntity(
+                    id = recordId,
+                    platformId = platformId,
+                    grossMinor = shares[i],
+                    currency = currency,
+                    hoursWorked = (hourTenths[i] - unpaidTenths[i]) / 10.0,
+                    hoursUnpaid = unpaidTenths[i] / 10.0,
+                    expectedWeekStart = LocalDate.ofInstant(landedAt, NAIROBI),
+                    createdAt = submittedAt
+                )
+            )
+            db.stageEventDao().insertAll(
+                listOf(
+                    ev(recordId, 1, Stage.SUBMITTED, submittedAt),
+                    ev(recordId, 2, Stage.IN_REVIEW, submittedAt.plus(Duration.ofHours(6))),
+                    ev(recordId, 3, Stage.APPROVED, landedAt.minus(Duration.ofDays(2))),
+                    ev(recordId, 4, Stage.PAYOUT_ISSUED, landedAt.minus(Duration.ofDays(1))),
+                    ev(recordId, 5, Stage.RECEIVED, landedAt.minus(Duration.ofHours(6))),
+                    ev(recordId, 6, Stage.LANDED, landedAt)
+                )
+            )
+            db.conversionDao().insertAll(
+                listOf(
+                    ConversionSnapshotEntity(
+                        recordId = recordId,
+                        fromCurrency = currency,
+                        rateApplied = BigDecimal("100.00"),
+                        midRate = BigDecimal("100.00"),
+                        appliedAt = landedAt
+                    )
+                )
+            )
+        }
+
+        for (i in 0 until rejected) {
+            val index = landed + i
+            val rejectedAt = Instant.now().minus(Duration.ofDays(20L + i * 11))
+            val recordId = id++
+            db.recordDao().insert(
+                EarningRecordEntity(
+                    id = recordId,
+                    platformId = platformId,
+                    grossMinor = 0,
+                    currency = currency,
+                    hoursWorked = (hourTenths[index] - unpaidTenths[index]) / 10.0,
+                    hoursUnpaid = unpaidTenths[index] / 10.0,
+                    expectedWeekStart = LocalDate.ofInstant(rejectedAt, NAIROBI),
+                    createdAt = rejectedAt
+                )
+            )
+            db.stageEventDao().insertAll(
+                listOf(
+                    ev(recordId, 1, Stage.SUBMITTED, rejectedAt.minus(Duration.ofDays(6))),
+                    ev(recordId, 2, Stage.IN_REVIEW, rejectedAt.minus(Duration.ofDays(5))),
+                    ev(recordId, 3, Stage.REJECTED, rejectedAt)
+                )
+            )
+        }
+    }
+
+    private fun distribute(total: Long, parts: Int): List<Long> {
+        if (parts == 0) return emptyList()
+        val base = total / parts
+        return List(parts) { i -> if (i == parts - 1) total - base * (parts - 1) else base }
+    }
+
+    private fun distributeUnpaid(unpaidTenths: Long, hourTenths: List<Long>, rejected: Int): List<Long> {
+        val out = MutableList(hourTenths.size) { 0L }
+        var remaining = unpaidTenths
+        val order = hourTenths.indices.toList().takeLast(rejected) +
+            hourTenths.indices.toList().dropLast(rejected)
+        for (i in order) {
+            if (remaining <= 0) break
+            val take = minOf(remaining, hourTenths[i])
+            out[i] = take
+            remaining -= take
+        }
+        return out
+    }
+
+    /** A settle-time sample whose nearest-rank p50 and p90 land exactly on the sample data's. */
+    private fun durationsWith(n: Int, p50: Int, p90: Int): List<Long> {
+        val i50 = ceil(0.5 * n).toInt() - 1
+        val i90 = ceil(0.9 * n).toInt() - 1
+        return List(n) { i ->
+            when {
+                i < i50 -> max(1, p50 - (i50 - i)).toLong()
+                i == i50 -> p50.toLong()
+                i <= i90 -> (p50 + ((p90 - p50).toDouble() * (i - i50) / (i90 - i50)).roundToInt()).toLong()
+                else -> (p90 + (i - i90) * 3).toLong()
+            }
+        }
     }
 
     private suspend fun open(
