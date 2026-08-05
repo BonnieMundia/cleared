@@ -1,0 +1,57 @@
+name: Build
+
+# Every push to main leaves a downloadable APK on the Actions tab, so the phone can be updated
+# without a cable. Pull requests get the same checks without publishing an artifact.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A newer push supersedes an older one; there is no value in building a commit nobody is waiting on.
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 17, matching the sourceCompatibility and jvmTarget the app compiles to.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The 184 unit tests are the reason the five headline figures can be trusted; a green APK
+      # that fails them is worse than no APK.
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests/testDebugUnitTest
+          retention-days: 14
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleared-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          # Long enough to install from the phone at leisure, short enough not to accumulate.
+          retention-days: 30
