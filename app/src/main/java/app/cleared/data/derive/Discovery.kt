@@ -29,7 +29,79 @@ data class ListingProjection(
     val totalHours: Double
 )
 
+/** One line of the "How that number is built" table on frame `3b`. */
+data class ProjectionLine(
+    val label: String,
+    val value: String,
+    val subLabel: String? = null,
+    val isTotal: Boolean = false
+)
+
 object Discovery {
+
+    /**
+     * The projection written out as arithmetic, so `3b` can show its working.
+     *
+     * A number nobody can check is a number nobody should act on, and this one decides whether the
+     * user spends a week on something.
+     */
+    fun breakdown(
+        listing: ListingEntity,
+        platform: PlatformEntity?,
+        usualRoute: WithdrawalRouteEntity?,
+        rates: Map<Currency, BigDecimal>,
+        projection: ListingProjection,
+        formatMoney: (Currency, BigDecimal) -> String,
+        formatKes: (Long) -> String,
+        formatHours: (Double) -> String,
+        formatPercent: (Double) -> String
+    ): List<ProjectionLine> {
+        val currency = listing.currency
+        val stated = Money.fromMinor(listing.statedPayMinor)
+        val commissionPct = platform?.commissionPct ?: 0.0
+        val commission = stated.multiply(Money.pct(commissionPct))
+        val afterCommission = stated - commission
+
+        val spreadPct = usualRoute?.spreadPct ?: 0.0
+        val spreadCost = afterCommission.multiply(Money.pct(spreadPct))
+        val flatFee = usualRoute?.let { Money.fromMinor(it.flatFeeMinor) } ?: BigDecimal.ZERO
+        val routeCost = spreadCost + flatFee
+
+        val rows = mutableListOf<ProjectionLine>()
+        rows += ProjectionLine("Stated pay", formatMoney(currency, stated))
+
+        if (commission.signum() > 0) {
+            rows += ProjectionLine(
+                label = "Platform commission ${formatPercent(commissionPct * 100)}",
+                value = "−" + formatMoney(currency, commission)
+            )
+        }
+
+        if (routeCost.signum() > 0 && usualRoute != null) {
+            rows += ProjectionLine(
+                label = "Withdrawal and FX, your usual route",
+                value = "−" + formatMoney(usualRoute.feeCurrency, routeCost),
+                subLabel = "${usualRoute.label}, ${formatPercent(spreadPct * 100)}"
+            )
+        }
+
+        rows += ProjectionLine("Lands as", formatKes(projection.netKes))
+        rows += ProjectionLine(
+            label = "Divided by hours",
+            value = formatHours(projection.totalHours),
+            subLabel = if (listing.assessmentHours > 0) {
+                "${formatHours(listing.estHours)} of work + " +
+                    "${formatHours(listing.assessmentHours)} unpaid assessment"
+            } else null
+        )
+        rows += ProjectionLine(
+            label = "Projected effective",
+            value = formatKes(projection.projectedKesPerHour),
+            isTotal = true
+        )
+
+        return rows
+    }
 
     fun project(
         listing: ListingEntity,

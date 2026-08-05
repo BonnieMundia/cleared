@@ -3,6 +3,8 @@ package app.cleared
 import android.app.Application
 import app.cleared.data.ClearedRepository
 import app.cleared.data.db.ClearedDatabase
+import app.cleared.data.discovery.DiscoverySource
+import app.cleared.data.discovery.FixtureDiscoverySource
 import app.cleared.data.seed.DevSeed
 import app.cleared.data.sync.Connectivity
 import app.cleared.data.sync.SyncWorker
@@ -24,6 +26,12 @@ class ClearedApplication : Application() {
     val database: ClearedDatabase by lazy { ClearedDatabase.get(this) }
     val repository: ClearedRepository by lazy { ClearedRepository(database) }
     val connectivity: Connectivity by lazy { Connectivity(this) }
+
+    /**
+     * Discovery's sources are the one thing CLAUDE.md still lists as undecided, so this is a
+     * fixture behind the interface. Swapping in a real scanner is a one-line change here.
+     */
+    val discoverySource: DiscoverySource by lazy { FixtureDiscoverySource() }
 
     override fun onCreate() {
         super.onCreate()

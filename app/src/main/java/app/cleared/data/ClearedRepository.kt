@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import app.cleared.data.db.ClearedDatabase
 import app.cleared.data.db.entity.EarningRecordEntity
 import app.cleared.data.db.entity.FxRateEntity
+import app.cleared.data.db.entity.ListingEntity
 import app.cleared.data.db.entity.PlatformEntity
 import app.cleared.data.db.entity.RecordDetail
 import app.cleared.data.db.entity.StageEventEntity
@@ -201,6 +202,48 @@ class ClearedRepository(private val db: ClearedDatabase) {
                 idempotencyKey = key,
                 createdAt = at,
                 sizeBytes = 148
+            )
+        )
+        recordId
+    }
+
+    /**
+     * Tracks a Discovery listing as a prospect.
+     *
+     * The hours start counting immediately: the assessment is logged as unpaid work against the
+     * platform from the moment the user commits to trying, which is when it actually starts costing
+     * them. A prospect is in the PRE phase, so it is not owed and never appears on Pipeline — but
+     * it is in the platform's denominator, and if the calibration set takes twice as long as
+     * advertised, that shows up in the effective rate whether or not this ever becomes work.
+     */
+    suspend fun trackProspect(
+        listing: ListingEntity,
+        at: Instant = Instant.now()
+    ): Long? = db.withTransaction {
+        val platform = db.platformDao().all().firstOrNull { it.name == listing.platformName }
+            ?: return@withTransaction null
+
+        val recordId = db.recordDao().insert(
+            EarningRecordEntity(
+                platformId = platform.id,
+                grossMinor = listing.statedPayMinor,
+                currency = listing.currency,
+                hoursWorked = 0.0,
+                hoursUnpaid = listing.assessmentHours,
+                expectedWeekStart = LocalDate.ofInstant(at, NAIROBI)
+                    .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)),
+                createdAt = at,
+                description = listing.title
+            )
+        )
+        db.stageEventDao().insert(
+            StageEventEntity(
+                recordId = recordId,
+                stage = Stage.PROSPECT,
+                occurredAt = at,
+                source = EventSource.MANUAL,
+                idempotencyKey = "prospect:${listing.id}:$recordId",
+                note = "Tracked from ${listing.sourceLabel}"
             )
         )
         recordId

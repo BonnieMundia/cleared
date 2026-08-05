@@ -41,8 +41,13 @@ enum class ClearedDestination(
     Tax("tax", "Tax", Icons.AutoMirrored.Filled.ReceiptLong);
 
     companion object {
-        /** Discovery arrives in step 10; until then the bar carries the base four. */
-        val visible: List<ClearedDestination> = listOf(Pipeline, Platforms, Money, Tax)
+        /**
+         * Five destinations, in the order design/README.md gives them. M3 permits 3–5; if the
+         * product decides to fold one, it is Tax — consulted monthly rather than daily, and it sits
+         * naturally as a tab inside Money. Removing it from this list is the whole change.
+         */
+        val visible: List<ClearedDestination> =
+            listOf(Pipeline, Platforms, Discover, Money, Tax)
     }
 }
 

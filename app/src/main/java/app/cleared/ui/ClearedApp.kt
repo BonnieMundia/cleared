@@ -39,11 +39,14 @@ import app.cleared.ui.addrecord.AddRecordViewModel
 import app.cleared.ui.advisor.WithdrawAdvisorScreen
 import app.cleared.ui.advisor.WithdrawAdvisorViewModel
 import app.cleared.ui.components.OfflineStrip
+import app.cleared.ui.discover.DiscoverScreen
+import app.cleared.ui.discover.DiscoverViewModel
+import app.cleared.ui.discover.ListingDetailScreen
+import app.cleared.ui.discover.ListingDetailViewModel
 import app.cleared.ui.settletime.SettleTimeScreen
 import app.cleared.ui.settletime.SettleTimeViewModel
 import app.cleared.ui.nav.ClearedBottomBar
 import app.cleared.ui.nav.ClearedDestination
-import app.cleared.ui.nav.PlaceholderScreen
 import app.cleared.ui.pipeline.PipelineScreen
 import app.cleared.ui.pipeline.PipelineViewModel
 import app.cleared.ui.platforms.PlatformsScreen
@@ -242,6 +245,44 @@ fun ClearedApp() {
                 WithdrawAdvisorScreen(state = state, onBack = { navController.popBackStack() })
             }
 
+            composable(ClearedDestination.Discover.route) {
+                val viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory)
+                val state by viewModel.state.collectAsState()
+
+                Column(Modifier.fillMaxSize()) {
+                    ScreenTitle("Discover", chrome)
+                    DiscoverScreen(
+                        state = state,
+                        modifier = Modifier.weight(1f),
+                        onSelectFilter = viewModel::selectFilter,
+                        onOpenListing = { navController.navigate("listing/$it") }
+                    )
+                }
+            }
+
+            composable(
+                route = "listing/{${ListingDetailViewModel.ARG_LISTING_ID}}",
+                arguments = listOf(navArgument(ListingDetailViewModel.ARG_LISTING_ID) {
+                    type = NavType.StringType
+                })
+            ) {
+                val viewModel: ListingDetailViewModel =
+                    viewModel(factory = ListingDetailViewModel.Factory)
+                val state by viewModel.state.collectAsState()
+                val tracked by viewModel.tracked.collectAsState()
+
+                // Tracking it makes it a record; the user's next question is about the record, not
+                // the listing, so the screen steps out of the way.
+                LaunchedEffect(tracked) { if (tracked) navController.popBackStack() }
+
+                ListingDetailScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onTrackProspect = viewModel::trackAsProspect,
+                    onOpenSettleTime = { navController.navigate("settle/$it") }
+                )
+            }
+
             composable(SYNC_ROUTE) {
                 val viewModel: SyncViewModel = viewModel(factory = SyncViewModel.Factory)
                 val state by viewModel.state.collectAsState()
@@ -255,14 +296,10 @@ fun ClearedApp() {
                 )
             }
 
-            ClearedDestination.visible
-                .filter {
-                    it != ClearedDestination.Pipeline && it != ClearedDestination.Platforms &&
-                        it != ClearedDestination.Money && it != ClearedDestination.Tax
-                }
-                .forEach { destination ->
-                    composable(destination.route) { PlaceholderScreen(destination) }
-                }
+            // Every destination is built now. The placeholder loop that used to stand in for the
+            // unbuilt ones is gone: with Discover in `visible` it was registering `composable`
+            // twice for the same route, and a duplicate route in a NavGraph silently swallows the
+            // navigation rather than failing.
         }
     }
 }
@@ -347,4 +384,6 @@ private fun ScreenTitle(title: String, chrome: ScreenChrome? = null) {
         )
     }
 }
+
+
 
