@@ -2,7 +2,9 @@ package app.cleared.data
 
 import androidx.room.withTransaction
 import app.cleared.data.db.ClearedDatabase
+import app.cleared.data.db.entity.EarningRecordEntity
 import app.cleared.data.db.entity.PlatformEntity
+import app.cleared.data.db.entity.RecordDetail
 import app.cleared.data.db.entity.StageEventEntity
 import app.cleared.data.db.entity.SyncOpEntity
 import app.cleared.data.derive.Pipeline
@@ -14,12 +16,15 @@ import app.cleared.data.derive.SettleTime
 import app.cleared.data.derive.StageResolver
 import app.cleared.data.model.Currency
 import app.cleared.data.model.EventSource
+import app.cleared.data.model.Money
 import app.cleared.data.model.Stage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 
 /**
@@ -27,6 +32,8 @@ import java.util.UUID
  * nothing here reads a cached figure.
  */
 class ClearedRepository(private val db: ClearedDatabase) {
+
+    private val NAIROBI: ZoneId = ZoneId.of("Africa/Nairobi")
 
     fun observeRecordStates(): Flow<List<RecordState>> =
         db.recordDao().observeDetails().map { details -> details.map(RecordState::of) }
@@ -113,6 +120,77 @@ class ClearedRepository(private val db: ClearedDatabase) {
                 )
             )
         }
+    }
+
+    suspend fun platforms(): List<PlatformEntity> = db.platformDao().all()
+
+    fun observeRecordDetail(recordId: Long): Flow<RecordDetail?> = db.recordDao().observeDetail(recordId)
+
+    suspend fun recordDetail(recordId: Long): RecordDetail? =
+        db.recordDao().allDetails().firstOrNull { it.record.id == recordId }
+
+    /** The successor of a reversed record, if one has been logged yet. */
+    suspend fun successorOf(recordId: Long): RecordDetail? =
+        db.recordDao().allDetails().firstOrNull { it.record.supersedesRecordId == recordId }
+
+    /** Defaults for the Add-record sheet: the most recent record on this platform. */
+    suspend fun lastRecordFor(platformId: Long): EarningRecordEntity? =
+        db.recordDao().detailsForPlatform(platformId)
+            .maxByOrNull { it.record.createdAt }
+            ?.record
+
+    /**
+     * Creates a record and its opening stage event in one transaction, plus the `SyncOp` that will
+     * replay it. A record can never exist without an event, because its stage is derived from them.
+     */
+    suspend fun createRecord(
+        platformId: Long,
+        amount: BigDecimal,
+        currency: Currency,
+        hoursWorked: Double,
+        hoursUnpaid: Double,
+        stage: Stage,
+        at: Instant = Instant.now(),
+        expectedWeekStart: LocalDate = LocalDate.ofInstant(at, NAIROBI)
+            .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)),
+        externalRef: String? = null,
+        description: String? = null
+    ): Long = db.withTransaction {
+        val recordId = db.recordDao().insert(
+            EarningRecordEntity(
+                platformId = platformId,
+                grossMinor = Money.toMinor(amount),
+                currency = currency,
+                hoursWorked = hoursWorked,
+                hoursUnpaid = hoursUnpaid,
+                externalRef = externalRef,
+                expectedWeekStart = expectedWeekStart,
+                createdAt = at,
+                description = description
+            )
+        )
+
+        val key = "create:$recordId:${UUID.randomUUID()}"
+        db.stageEventDao().insert(
+            StageEventEntity(
+                recordId = recordId,
+                stage = stage,
+                occurredAt = at,
+                source = EventSource.MANUAL,
+                idempotencyKey = key
+            )
+        )
+        db.syncOpDao().insert(
+            SyncOpEntity(
+                entityType = "EarningRecord",
+                entityId = recordId,
+                payload = """{"recordId":$recordId,"stage":"${stage.name}","currency":"${currency.name}"}""",
+                idempotencyKey = key,
+                createdAt = at,
+                sizeBytes = 148
+            )
+        )
+        recordId
     }
 
     suspend fun currentStage(recordId: Long): Stage? = db.stageEventDao().latestForRecord(recordId)?.stage

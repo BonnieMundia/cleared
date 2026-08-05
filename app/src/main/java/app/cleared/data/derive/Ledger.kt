@@ -72,6 +72,16 @@ object Ledger {
     }
 
     /**
+     * What actually reached a wallet or a bank, whether or not it stayed there.
+     *
+     * For a landed record this is [finalKesCleared]. For a reversed one it is the figure frame `4a`
+     * puts in the hero — the money exists, it is just in the wrong place, so it is rendered in
+     * `onSurface` rather than in the rejected colour.
+     */
+    fun arrivedKes(detail: RecordDetail): BigDecimal =
+        clearedFrom(detail, convertedAmount(detail), feesInKes(detail))
+
+    /**
      * What the record was worth at mid-market — the yardstick the cost percentage is measured
      * against. `1e` reads "6.6% of the mid-market value".
      */

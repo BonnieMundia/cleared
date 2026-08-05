@@ -78,7 +78,7 @@ object SettleTime {
     fun endToEndDays(state: RecordState): Long? {
         val from = submittedAt(state) ?: return null
         val to = landedAt(state) ?: return null
-        return Duration.between(from, to).toDays()
+        return CalendarDays.between(from, to)
     }
 
     /** Mean days spent in each stage, over every record that left that stage. */

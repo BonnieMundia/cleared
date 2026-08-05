@@ -57,9 +57,10 @@ object StageResolver {
             .minOfOrNull { it.occurredAt }
     }
 
+    /** Calendar days, so `31d` on the age pill means the date moved 31 times. */
     fun daysInCurrentPhase(detail: RecordDetail, now: Instant): Long {
         val from = currentPhaseStartedAt(detail) ?: return 0
-        return Duration.between(from, now).toDays()
+        return CalendarDays.between(from, now)
     }
 }
 
