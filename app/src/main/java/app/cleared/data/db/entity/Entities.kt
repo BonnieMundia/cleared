@@ -227,7 +227,16 @@ data class SyncOpEntity(
     val nextAttemptAt: Instant? = null,
     val state: SyncOpState = SyncOpState.WAITING,
     /** Surfaced on the Sync screen — the user is on metered mobile data. */
-    val sizeBytes: Int
+    val sizeBytes: Int,
+    /** Human-readable, for the queue row on frame `2a`. */
+    val label: String? = null,
+
+    // What the platform said, when the op comes back in conflict. Frame `2a` shows both sides with
+    // both timestamps, so both have to be kept.
+    val remoteStage: Stage? = null,
+    val remoteOccurredAt: Instant? = null,
+    val remoteSource: EventSource? = null,
+    val lastError: String? = null
 )
 
 /**

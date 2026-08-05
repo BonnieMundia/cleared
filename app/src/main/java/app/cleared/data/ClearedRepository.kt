@@ -3,6 +3,7 @@ package app.cleared.data
 import androidx.room.withTransaction
 import app.cleared.data.db.ClearedDatabase
 import app.cleared.data.db.entity.EarningRecordEntity
+import app.cleared.data.db.entity.FxRateEntity
 import app.cleared.data.db.entity.PlatformEntity
 import app.cleared.data.db.entity.RecordDetail
 import app.cleared.data.db.entity.StageEventEntity
@@ -21,6 +22,7 @@ import app.cleared.data.model.Currency
 import app.cleared.data.model.EventSource
 import app.cleared.data.model.Money
 import app.cleared.data.model.Stage
+import app.cleared.data.model.SyncOpState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -209,4 +211,61 @@ class ClearedRepository(private val db: ClearedDatabase) {
     suspend fun stageHistory(recordId: Long): List<StageEventEntity> = db.stageEventDao().forRecord(recordId)
 
     fun observeQueuedWriteCount(): Flow<Int> = db.syncOpDao().observeQueuedCount()
+
+    fun observeSyncOps(): Flow<List<SyncOpEntity>> = db.syncOpDao().observeAll()
+
+    fun observeConflicts(): Flow<List<SyncOpEntity>> = db.syncOpDao().observeConflicts()
+
+    fun observeBytesToSend(): Flow<Int> = db.syncOpDao().observeBytesToSend()
+
+    fun observeFxRates(): Flow<List<FxRateEntity>> = db.fxRateDao().observeAll()
+
+    /**
+     * Resolving a conflict appends a **new** `StageEvent` recording the decision. Nothing is
+     * rewritten, and the losing side stays in the log.
+     *
+     * Resolving in favour of the platform does **not** discard logged hours. The record moves to
+     * whatever the platform says — usually `REJECTED` — and the hours stay against the platform,
+     * dragging its effective rate down exactly as they should. That is the whole point of the app,
+     * and it is the one thing a conflict resolution must not quietly undo.
+     */
+    suspend fun resolveConflict(opId: Long, takeTheirs: Boolean, at: Instant = Instant.now()) {
+        db.withTransaction {
+            val op = db.syncOpDao().byId(opId) ?: return@withTransaction
+            if (takeTheirs) {
+                val stage = op.remoteStage ?: return@withTransaction
+                db.stageEventDao().insert(
+                    StageEventEntity(
+                        recordId = op.entityId,
+                        stage = stage,
+                        occurredAt = op.remoteOccurredAt ?: at,
+                        source = op.remoteSource ?: EventSource.PLATFORM_API,
+                        idempotencyKey = "conflict:${op.id}:theirs",
+                        note = "Conflict resolved in favour of the platform"
+                    )
+                )
+            }
+            // Either way the op leaves the queue: keeping mine means the local event already in the
+            // log is the answer, and there is nothing further to send.
+            db.syncOpDao().update(op.copy(state = SyncOpState.DONE, nextAttemptAt = null))
+        }
+    }
+
+    /** Puts an op back in conflict, for the dev seed and for tests. */
+    suspend fun markConflict(
+        opId: Long,
+        remoteStage: Stage,
+        remoteOccurredAt: Instant,
+        source: EventSource = EventSource.PLATFORM_API
+    ) {
+        val op = db.syncOpDao().byId(opId) ?: return
+        db.syncOpDao().update(
+            op.copy(
+                state = SyncOpState.CONFLICT,
+                remoteStage = remoteStage,
+                remoteOccurredAt = remoteOccurredAt,
+                remoteSource = source
+            )
+        )
+    }
 }

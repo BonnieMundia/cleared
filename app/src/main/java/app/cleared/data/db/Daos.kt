@@ -22,7 +22,6 @@ import app.cleared.data.db.entity.WalletBalanceEntity
 import app.cleared.data.db.entity.WithdrawalRouteEntity
 import app.cleared.data.model.SyncOpState
 import kotlinx.coroutines.flow.Flow
-import java.time.Instant
 
 @Dao
 interface PlatformDao {
@@ -146,10 +145,18 @@ interface SyncOpDao {
     @Query("SELECT COUNT(*) FROM sync_op WHERE state IN ('WAITING','RETRYING')")
     fun observeQueuedCount(): Flow<Int>
 
+    @Query("SELECT * FROM sync_op WHERE state = 'CONFLICT' ORDER BY id ASC")
+    fun observeConflicts(): Flow<List<SyncOpEntity>>
+
+    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM sync_op WHERE state IN ('WAITING','RETRYING')")
+    fun observeBytesToSend(): Flow<Int>
+
     @Insert suspend fun insert(op: SyncOpEntity): Long
 
-    @Query("UPDATE sync_op SET state = :state, attempts = :attempts, nextAttemptAt = :nextAttemptAt WHERE id = :id")
-    suspend fun markAttempt(id: Long, state: SyncOpState, attempts: Int, nextAttemptAt: Instant?)
+    /** The queue is the one table that *is* updated — it is a work list, not a history. */
+    @Update suspend fun update(op: SyncOpEntity)
+
+    @Query("SELECT * FROM sync_op WHERE id = :id") suspend fun byId(id: Long): SyncOpEntity?
 }
 
 @Dao

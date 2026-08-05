@@ -35,7 +35,7 @@ import app.cleared.data.db.entity.WithdrawalRouteEntity
         TaxSettingsEntity::class,
         ListingEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -80,11 +80,22 @@ abstract class ClearedDatabase : RoomDatabase() {
             }
         }
 
+        /** Adds what a conflicted op has to remember: the platform's side of the disagreement. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `sync_op` ADD COLUMN `label` TEXT")
+                db.execSQL("ALTER TABLE `sync_op` ADD COLUMN `remoteStage` TEXT")
+                db.execSQL("ALTER TABLE `sync_op` ADD COLUMN `remoteOccurredAt` INTEGER")
+                db.execSQL("ALTER TABLE `sync_op` ADD COLUMN `remoteSource` TEXT")
+                db.execSQL("ALTER TABLE `sync_op` ADD COLUMN `lastError` TEXT")
+            }
+        }
+
         @Volatile private var instance: ClearedDatabase? = null
 
         fun get(context: Context): ClearedDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, ClearedDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 .also { instance = it }
         }

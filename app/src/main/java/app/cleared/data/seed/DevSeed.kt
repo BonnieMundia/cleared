@@ -8,6 +8,7 @@ import app.cleared.data.db.entity.FxRateEntity
 import app.cleared.data.db.entity.PlatformEntity
 import app.cleared.data.db.entity.SettlementEntity
 import app.cleared.data.db.entity.StageEventEntity
+import app.cleared.data.db.entity.SyncOpEntity
 import app.cleared.data.db.entity.TaxSettingsEntity
 import app.cleared.data.db.entity.WalletBalanceEntity
 import app.cleared.data.db.entity.WithdrawalRouteEntity
@@ -19,6 +20,7 @@ import app.cleared.data.model.Money
 import app.cleared.data.model.PayoutDestination
 import app.cleared.data.model.PlatformKind
 import app.cleared.data.model.Stage
+import app.cleared.data.model.SyncOpState
 import app.cleared.data.model.WalletProvider
 import java.math.BigDecimal
 import java.time.Duration
@@ -127,6 +129,78 @@ object DevSeed {
         history(db, HALO, Currency.USD, landed = 15, rejected = 0, clearedKes = 312_400, hours = 245.0, unpaid = 6.0, p50 = 11, p90 = 19, idFrom = 300)
         history(db, NORTHLINE, Currency.USD, landed = 10, rejected = 1, clearedKes = 148_200, hours = 115.5, unpaid = 4.0, p50 = 9, p90 = 16, idFrom = 400)
         history(db, VECTOR, Currency.USD, landed = 11, rejected = 7, clearedKes = 38_600, hours = 81.0, unpaid = 28.0, p50 = 38, p90 = 61, idFrom = 500)
+
+        seedSyncQueue(db)
+    }
+
+    /**
+     * The queue from frame `2a`: two writes waiting, one backing off, and one conflict.
+     *
+     * The conflict is the sample's — Halo Data's USD 42.50, where the local event says Approved and
+     * the platform says Rejected. It is here so the resolution path can be seen; nothing in the app
+     * produces a conflict on its own, because there is no backend yet to disagree with.
+     */
+    private suspend fun seedSyncQueue(db: ClearedDatabase) {
+        val now = Instant.now()
+
+        db.syncOpDao().insert(
+            SyncOpEntity(
+                entityType = "StageEvent",
+                entityId = 5,
+                payload = """{"recordId":5,"stage":"IN_REVIEW"}""",
+                idempotencyKey = "seed:sync:1",
+                createdAt = now.minus(Duration.ofMinutes(42)),
+                sizeBytes = 96,
+                label = "Lumen Writers → In review"
+            )
+        )
+        db.syncOpDao().insert(
+            SyncOpEntity(
+                entityType = "EarningRecord",
+                entityId = 1,
+                payload = """{"recordId":1,"currency":"USD"}""",
+                idempotencyKey = "seed:sync:2",
+                createdAt = now.minus(Duration.ofMinutes(34)),
+                sizeBytes = 148,
+                label = "New record · Halo Data USD 184.00"
+            )
+        )
+        db.syncOpDao().insert(
+            SyncOpEntity(
+                entityType = "StageEvent",
+                entityId = 2,
+                payload = """{"recordId":2,"stage":"PAYOUT_ISSUED"}""",
+                idempotencyKey = "seed:sync:3",
+                createdAt = now.minus(Duration.ofMinutes(27)),
+                attempts = 2,
+                nextAttemptAt = now.plus(Duration.ofMinutes(4)),
+                state = SyncOpState.RETRYING,
+                sizeBytes = 96,
+                label = "Northline → Payout issued"
+            )
+        )
+
+        val conflictId = db.syncOpDao().insert(
+            SyncOpEntity(
+                entityType = "StageEvent",
+                entityId = 3,
+                payload = """{"recordId":3,"stage":"APPROVED"}""",
+                idempotencyKey = "seed:sync:4",
+                createdAt = now.minus(Duration.ofMinutes(29)),
+                sizeBytes = 96,
+                label = "Halo Data → Approved"
+            )
+        )
+        db.syncOpDao().byId(conflictId)?.let { op ->
+            db.syncOpDao().update(
+                op.copy(
+                    state = SyncOpState.CONFLICT,
+                    remoteStage = Stage.REJECTED,
+                    remoteOccurredAt = now.minus(Duration.ofMinutes(48)),
+                    remoteSource = EventSource.PLATFORM_API
+                )
+            )
+        }
     }
 
     private const val LUMEN = 1L

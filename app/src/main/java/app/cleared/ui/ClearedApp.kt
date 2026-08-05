@@ -1,4 +1,4 @@
-package app.cleared.ui
+﻿package app.cleared.ui
 
 import android.content.Context
 import android.content.Intent
@@ -32,8 +32,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import app.cleared.ClearedApplication
+import app.cleared.data.sync.SyncWorker
 import app.cleared.ui.addrecord.AddRecordSheet
 import app.cleared.ui.addrecord.AddRecordViewModel
+import app.cleared.ui.components.OfflineStrip
 import app.cleared.ui.nav.ClearedBottomBar
 import app.cleared.ui.nav.ClearedDestination
 import app.cleared.ui.nav.PlaceholderScreen
@@ -45,11 +48,16 @@ import app.cleared.ui.money.MoneyScreen
 import app.cleared.ui.money.MoneyViewModel
 import app.cleared.ui.record.RecordDetailScreen
 import app.cleared.ui.record.RecordDetailViewModel
+import app.cleared.ui.sync.SyncScreen
+import app.cleared.ui.sync.SyncViewModel
 import app.cleared.ui.tax.TaxScreen
 import app.cleared.ui.tax.TaxViewModel
 import app.cleared.ui.theme.Cleared
 import app.cleared.ui.theme.Dimens
 import java.io.File
+
+/** Pushed, never a tab — reached by tapping the offline strip. */
+const val SYNC_ROUTE = "sync"
 
 /**
  * The single Activity's content: a bottom-navigated `NavHost` with Pipeline as the start
@@ -63,6 +71,18 @@ fun ClearedApp() {
     val current = ClearedDestination.visible
         .firstOrNull { it.route == backStackEntry?.destination?.route }
         ?: ClearedDestination.Pipeline
+
+    // Offline is a condition of the app rather than of one screen, so the strip is shared chrome:
+    // every tab draws it under its own title, and every one of them keeps working under it.
+    val app = LocalContext.current.applicationContext as ClearedApplication
+    val online by app.connectivity.isOnline.collectAsState(initial = true)
+    val queued by app.repository.observeQueuedWriteCount().collectAsState(initial = 0)
+
+    val chrome = ScreenChrome(
+        offline = !online,
+        queuedWrites = queued,
+        onOpenSync = { navController.navigate(SYNC_ROUTE) }
+    )
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -91,7 +111,7 @@ fun ClearedApp() {
                 var sheetOpen by rememberSaveable { mutableStateOf(false) }
 
                 Column(Modifier.fillMaxSize()) {
-                    ScreenTitle("Pipeline")
+                    ScreenTitle("Pipeline", chrome)
                     PipelineScreen(
                         state = state,
                         pendingUndo = undo,
@@ -132,7 +152,7 @@ fun ClearedApp() {
                 val state by viewModel.state.collectAsState()
 
                 Column(Modifier.fillMaxSize()) {
-                    ScreenTitle("Platforms")
+                    ScreenTitle("Platforms", chrome)
                     PlatformsScreen(
                         state = state,
                         modifier = Modifier.weight(1f),
@@ -146,7 +166,7 @@ fun ClearedApp() {
                 val state by viewModel.state.collectAsState()
 
                 Column(Modifier.fillMaxSize()) {
-                    ScreenTitle("Money")
+                    ScreenTitle("Money", chrome)
                     MoneyScreen(
                         state = state,
                         modifier = Modifier.weight(1f),
@@ -163,7 +183,7 @@ fun ClearedApp() {
                 val context = LocalContext.current
 
                 // The export hands the file to the system share sheet. The user picks where it
-                // goes, or picks nothing — the app never sends it anywhere itself.
+                // goes, or picks nothing â€” the app never sends it anywhere itself.
                 LaunchedEffect(export) {
                     val payload = export ?: return@LaunchedEffect
                     runCatching { shareCsv(context, payload.fileName, payload.content) }
@@ -171,7 +191,7 @@ fun ClearedApp() {
                 }
 
                 Column(Modifier.fillMaxSize()) {
-                    ScreenTitle("Tax")
+                    ScreenTitle("Tax", chrome)
                     TaxScreen(
                         state = state,
                         modifier = Modifier.weight(1f),
@@ -179,6 +199,19 @@ fun ClearedApp() {
                         onExport = viewModel::export
                     )
                 }
+            }
+
+            composable(SYNC_ROUTE) {
+                val viewModel: SyncViewModel = viewModel(factory = SyncViewModel.Factory)
+                val state by viewModel.state.collectAsState()
+                val context = LocalContext.current
+
+                SyncScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onResolve = viewModel::resolve,
+                    onRetryNow = { SyncWorker.retryNow(context) }
+                )
             }
 
             ClearedDestination.visible
@@ -196,7 +229,7 @@ fun ClearedApp() {
 /**
  * Writes the CSV to the app's own cache and offers it to the system share sheet.
  *
- * A `FileProvider` grant rather than a world-readable file, and one the user resolves themselves —
+ * A `FileProvider` grant rather than a world-readable file, and one the user resolves themselves â€”
  * this app never sends anything anywhere on its own.
  */
 private fun shareCsv(context: Context, fileName: String, content: String) {
@@ -239,13 +272,22 @@ private fun AddRecordHost(onDismiss: () -> Unit) {
     )
 }
 
+/** What every tab draws above its content: the title, and the offline strip when it applies. */
+private data class ScreenChrome(
+    val offline: Boolean,
+    val queuedWrites: Int,
+    val onOpenSync: () -> Unit
+)
+
 /**
- * 48 dp, title only, flat. M3's own TopAppBar is 64 dp; the extra 16 dp of slack under the title
- * pushed the hero visibly down the screen, so the height is pinned to the spec.
+ * 48 dp title, then the offline strip if there is one.
+ *
+ * M3's own TopAppBar is 64 dp; the extra 16 dp of slack under the title pushed the hero visibly
+ * down the screen, so the height is pinned to the spec.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ScreenTitle(title: String) {
+private fun ScreenTitle(title: String, chrome: ScreenChrome? = null) {
     TopAppBar(
         title = { Text(title, style = Cleared.type.screenTitle) },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -256,4 +298,12 @@ private fun ScreenTitle(title: String) {
         windowInsets = WindowInsets(0.dp),
         modifier = Modifier.height(Dimens.topAppBar)
     )
+    if (chrome != null && chrome.offline) {
+        OfflineStrip(
+            lastSyncedLabel = null,
+            queuedWrites = chrome.queuedWrites,
+            onClick = chrome.onOpenSync
+        )
+    }
 }
+

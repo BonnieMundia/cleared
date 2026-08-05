@@ -116,15 +116,9 @@ fun PipelineScreen(
             }
         }
     ) { padding ->
+        // The offline strip is shared chrome and lives in the app shell, above every screen's
+        // content — see ClearedApp.ScreenTitle.
         Column(Modifier.padding(padding).fillMaxSize()) {
-            if (state.offline) {
-                OfflineStrip(
-                    lastSyncedLabel = state.lastSyncedLabel,
-                    queuedWrites = state.queuedWrites,
-                    onClick = onOpenSync
-                )
-            }
-
             LazyColumn(Modifier.fillMaxSize()) {
                 item { HeroBlock(state) }
 
