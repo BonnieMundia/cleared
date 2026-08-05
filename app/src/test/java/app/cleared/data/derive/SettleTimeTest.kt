@@ -102,6 +102,23 @@ class SettleTimeTest {
         assertEquals(7L, Pipeline.daysOver(record5, now, p50))
     }
 
+    /**
+     * A record that has landed cannot be late.
+     *
+     * LANDED is a money-phase stage, so the literal reading of "phase in (WORK, MONEY)" catches
+     * every record in the history that took longer than p90 to arrive — which is most of the tail,
+     * by construction. Found when the settle-time chase card claimed all fifteen of Halo Data's
+     * landed records were overdue.
+     */
+    @Test
+    fun `a landed record is never overdue`() {
+        val p90 = SettleTime.p90ByPlatform(SampleData.platforms.map { it.id }, states, now)
+        val landed = states.filter { it.displayStage == app.cleared.data.model.Stage.LANDED }
+
+        assertTrue("the fixture has landed history to check", landed.size > 10)
+        assertTrue(landed.none { Pipeline.isOverdue(it, now, p90) })
+    }
+
     /** Grace days are user-configurable and push the threshold out, never in. */
     @Test
     fun `grace days extend the threshold`() {

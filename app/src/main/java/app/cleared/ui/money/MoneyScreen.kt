@@ -48,11 +48,12 @@ fun MoneyScreen(
     state: MoneyUiState,
     modifier: Modifier = Modifier,
     onAmountChanged: (String) -> Unit = {},
-    onCurrencyChanged: (Currency) -> Unit = {}
+    onCurrencyChanged: (Currency) -> Unit = {},
+    onOpenAdvisor: (String) -> Unit = {}
 ) {
     LazyColumn(modifier.fillMaxSize()) {
         item { SectionLabel("Sitting in wallets", top = 6.dp) }
-        item { WalletCard(state) }
+        item { WalletCard(state, onOpenAdvisor) }
 
         item { SectionLabel("Cost of getting paid · this year") }
         item { CostBlock(state) }
@@ -77,7 +78,7 @@ private fun SectionLabel(text: String, top: Dp = Dimens.sectionSpacing) {
 }
 
 @Composable
-private fun WalletCard(state: MoneyUiState) {
+private fun WalletCard(state: MoneyUiState, onOpenAdvisor: (String) -> Unit) {
     Column(
         Modifier
             .padding(horizontal = Dimens.screenGutter)
@@ -90,7 +91,11 @@ private fun WalletCard(state: MoneyUiState) {
                 HorizontalDivider(thickness = Dimens.hairline, color = MaterialTheme.colorScheme.outlineVariant)
             }
             Row(
-                Modifier.fillMaxWidth().padding(Dimens.cardPadding),
+                Modifier
+                    .fillMaxWidth()
+                    // A wallet row opens the advisor for that wallet — frame `2c`.
+                    .clickable { onOpenAdvisor(wallet.providerKey) }
+                    .padding(Dimens.cardPadding),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {

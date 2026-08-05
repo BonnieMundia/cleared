@@ -66,6 +66,83 @@ object Withdrawal {
     }
 
     /**
+     * The cost curve on frame `2c` — what a withdrawal of each size costs as a percentage.
+     *
+     * It falls monotonically because the fee is flat: the same USD 4.99 is 5% of a hundred dollars
+     * and 0.6% of eight hundred. Seeing the curve is what tells you to wait.
+     */
+    fun costCurve(
+        route: WithdrawalRouteEntity,
+        sizes: List<BigDecimal>,
+        currency: Currency,
+        rates: Map<Currency, BigDecimal>
+    ): List<Pair<BigDecimal, BigDecimal>> =
+        sizes.map { it to costPct(route, it, currency, rates) }
+
+    /**
+     * The size at which a withdrawal's cost falls to [targetPct] — the break-even the user can be
+     * notified at. Null when the fee is already below it, or never reaches it.
+     */
+    fun breakEvenAmount(
+        route: WithdrawalRouteEntity,
+        targetPct: Double,
+        currency: Currency,
+        rates: Map<Currency, BigDecimal>,
+        maxAmount: BigDecimal = BigDecimal(5_000)
+    ): BigDecimal? {
+        val target = BigDecimal.valueOf(targetPct)
+        // The curve is monotonic in amount, so a bisection is exact enough and cannot get stuck.
+        var low = BigDecimal.ONE
+        var high = maxAmount
+        if (costPct(route, high, currency, rates) > target) return null
+        if (costPct(route, low, currency, rates) <= target) return low
+
+        repeat(40) {
+            val mid = (low + high).divide(BigDecimal(2), java.math.MathContext.DECIMAL64)
+            if (costPct(route, mid, currency, rates) > target) low = mid else high = mid
+        }
+        return high.setScale(0, java.math.RoundingMode.CEILING)
+    }
+
+    /**
+     * What a move to a different payout destination would be worth over a year.
+     *
+     * design/SCREENS.md `2c`: "At last year's Halo Data volume that difference is KES 12,400."
+     */
+    fun destinationSaving(
+        current: WithdrawalRouteEntity,
+        better: WithdrawalRouteEntity,
+        annualVolume: BigDecimal,
+        typicalWithdrawal: BigDecimal,
+        currency: Currency,
+        rates: Map<Currency, BigDecimal>
+    ): Long {
+        if (typicalWithdrawal.signum() <= 0) return 0
+        val withdrawals = annualVolume.divide(typicalWithdrawal, java.math.MathContext.DECIMAL64)
+        val midRate = Pipeline.rateFor(currency, rates)
+        val currentNet = netKes(current, typicalWithdrawal, midRate)
+        val betterNet = netKes(better, typicalWithdrawal, midRate)
+        return Money.toKes((betterNet - currentNet).multiply(withdrawals))
+    }
+
+    /**
+     * What a move in the exchange rate would do to money still sitting in a wallet.
+     *
+     * The balances are unlanded, so they are exposed to the rate until they are withdrawn — which
+     * is the other half of the argument against leaving them there.
+     */
+    fun fxExposureKes(
+        balances: Map<Currency, BigDecimal>,
+        rates: Map<Currency, BigDecimal>,
+        swingPct: Double
+    ): Long {
+        val total = balances.entries.fold(BigDecimal.ZERO) { acc, (currency, amount) ->
+            acc + amount.multiply(Pipeline.rateFor(currency, rates))
+        }
+        return Money.toKes(total.multiply(Money.pct(swingPct / 100.0)))
+    }
+
+    /**
      * Splitting is never cheaper: the flat fee is paid twice. Returns the KES penalty for taking
      * [parts] withdrawals of `amount / parts` instead of one of [amount].
      */

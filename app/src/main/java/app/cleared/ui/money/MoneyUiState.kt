@@ -16,6 +16,8 @@ import java.time.Instant
 
 data class WalletRowUi(
     val provider: String,
+    /** The enum name, for the advisor route. */
+    val providerKey: String,
     val balances: String,
     val kes: String
 )
@@ -72,6 +74,7 @@ object MoneyMapper {
         val walletRows = byProvider.map { (provider, balances) ->
             WalletRowUi(
                 provider = provider.name.lowercase().replaceFirstChar { it.uppercase() },
+                providerKey = provider.name,
                 balances = balances.joinToString(" · ") {
                     MoneyFormat.formatMinor(it.currency, it.amountMinor)
                 },

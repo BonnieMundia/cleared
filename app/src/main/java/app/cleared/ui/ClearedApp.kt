@@ -36,7 +36,11 @@ import app.cleared.ClearedApplication
 import app.cleared.data.sync.SyncWorker
 import app.cleared.ui.addrecord.AddRecordSheet
 import app.cleared.ui.addrecord.AddRecordViewModel
+import app.cleared.ui.advisor.WithdrawAdvisorScreen
+import app.cleared.ui.advisor.WithdrawAdvisorViewModel
 import app.cleared.ui.components.OfflineStrip
+import app.cleared.ui.settletime.SettleTimeScreen
+import app.cleared.ui.settletime.SettleTimeViewModel
 import app.cleared.ui.nav.ClearedBottomBar
 import app.cleared.ui.nav.ClearedDestination
 import app.cleared.ui.nav.PlaceholderScreen
@@ -110,18 +114,30 @@ fun ClearedApp() {
                 val undo by viewModel.pendingUndo.collectAsState()
                 var sheetOpen by rememberSaveable { mutableStateOf(false) }
 
+                val selected by viewModel.selected.collectAsState()
+                val bulkUndo by viewModel.pendingBulkUndo.collectAsState()
+
                 Column(Modifier.fillMaxSize()) {
-                    ScreenTitle("Pipeline", chrome)
+                    // The contextual bar replaces the title while a selection is live.
+                    if (selected.isEmpty()) ScreenTitle("Pipeline", chrome)
                     PipelineScreen(
                         state = state,
                         pendingUndo = undo,
                         modifier = Modifier.weight(1f),
+                        selected = selected,
+                        pendingBulkUndo = bulkUndo,
                         onAdvance = { viewModel.advance(it.id, it.platformName) },
                         onOpenRecord = { navController.navigate("record/${it.id}") },
-                        onLongPressRecord = { navController.navigate("record/${it.id}") },
+                        onLongPressRecord = { viewModel.toggleSelection(it.id) },
+                        onToggleSelection = { viewModel.toggleSelection(it.id) },
+                        onClearSelection = viewModel::clearSelection,
+                        onAdvanceSelected = viewModel::advanceSelected,
                         onUndo = viewModel::undo,
                         onUndoHandled = viewModel::undoHandled,
-                        onAddRecord = { sheetOpen = true }
+                        onUndoBulk = viewModel::undoBulk,
+                        onBulkUndoHandled = viewModel::bulkUndoHandled,
+                        onAddRecord = { sheetOpen = true },
+                        onOpenSync = { navController.navigate(SYNC_ROUTE) }
                     )
                 }
 
@@ -156,7 +172,8 @@ fun ClearedApp() {
                     PlatformsScreen(
                         state = state,
                         modifier = Modifier.weight(1f),
-                        onSelectSort = viewModel::selectSort
+                        onSelectSort = viewModel::selectSort,
+                        onOpenSettleTime = { navController.navigate("settle/$it") }
                     )
                 }
             }
@@ -171,7 +188,8 @@ fun ClearedApp() {
                         state = state,
                         modifier = Modifier.weight(1f),
                         onAmountChanged = viewModel::changeAmount,
-                        onCurrencyChanged = viewModel::changeCurrency
+                        onCurrencyChanged = viewModel::changeCurrency,
+                        onOpenAdvisor = { navController.navigate("advisor/$it") }
                     )
                 }
             }
@@ -199,6 +217,29 @@ fun ClearedApp() {
                         onExport = viewModel::export
                     )
                 }
+            }
+
+            composable(
+                route = "settle/{${SettleTimeViewModel.ARG_PLATFORM_ID}}",
+                arguments = listOf(navArgument(SettleTimeViewModel.ARG_PLATFORM_ID) {
+                    type = NavType.StringType
+                })
+            ) {
+                val viewModel: SettleTimeViewModel = viewModel(factory = SettleTimeViewModel.Factory)
+                val state by viewModel.state.collectAsState()
+                SettleTimeScreen(state = state, onBack = { navController.popBackStack() })
+            }
+
+            composable(
+                route = "advisor/{${WithdrawAdvisorViewModel.ARG_PROVIDER}}",
+                arguments = listOf(navArgument(WithdrawAdvisorViewModel.ARG_PROVIDER) {
+                    type = NavType.StringType
+                })
+            ) {
+                val viewModel: WithdrawAdvisorViewModel =
+                    viewModel(factory = WithdrawAdvisorViewModel.Factory)
+                val state by viewModel.state.collectAsState()
+                WithdrawAdvisorScreen(state = state, onBack = { navController.popBackStack() })
             }
 
             composable(SYNC_ROUTE) {

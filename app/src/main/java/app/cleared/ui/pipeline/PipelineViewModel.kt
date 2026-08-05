@@ -41,6 +41,13 @@ class PipelineViewModel(
     private val undoRequests = MutableStateFlow<UndoableAdvance?>(null)
     val pendingUndo: StateFlow<UndoableAdvance?> = undoRequests
 
+    /** Transient, and deliberately not persisted: a selection does not survive leaving the screen. */
+    private val _selected = MutableStateFlow<Set<Long>>(emptySet())
+    val selected: StateFlow<Set<Long>> = _selected
+
+    private val bulkUndo = MutableStateFlow<List<UndoableAdvance>>(emptyList())
+    val pendingBulkUndo: StateFlow<List<UndoableAdvance>> = bulkUndo
+
     val state: StateFlow<PipelineUiState> = combine(
         repository.observeRecordStates(),
         repository.observeRates(),
@@ -84,6 +91,54 @@ class PipelineViewModel(
 
     fun undoHandled() {
         undoRequests.value = null
+    }
+
+    // ── Bulk triage, frame `2d` ─────────────────────────────────────────────────────────────────
+
+    fun toggleSelection(recordId: Long) {
+        _selected.value = _selected.value.let { if (recordId in it) it - recordId else it + recordId }
+    }
+
+    fun clearSelection() {
+        _selected.value = emptySet()
+    }
+
+    /**
+     * Advances every selected record by one stage.
+     *
+     * Work-phase records go to their next stage and money-phase records to theirs — a bulk action
+     * is many individual advances, not one shared destination, because the records are not all in
+     * the same place. Anything terminal or landed is skipped rather than reported as an error.
+     */
+    fun advanceSelected() {
+        val ids = _selected.value.toList().sorted()
+        if (ids.isEmpty()) return
+
+        viewModelScope.launch {
+            val done = mutableListOf<UndoableAdvance>()
+            val names = state.value.groups.flatMap { it.rows }.associate { it.id to it.platformName }
+
+            for (id in ids) {
+                val from = repository.currentStage(id) ?: continue
+                val to = repository.advance(id, at = clock()) ?: continue
+                done += UndoableAdvance(id, names[id] ?: "Record", from, to)
+            }
+
+            _selected.value = emptySet()
+            if (done.isNotEmpty()) bulkUndo.value = done
+        }
+    }
+
+    fun undoBulk(advances: List<UndoableAdvance>) {
+        viewModelScope.launch {
+            // Reversed, so a record advanced twice in one batch lands back where it started.
+            advances.reversed().forEach { repository.revertTo(it.recordId, it.from, at = clock()) }
+            bulkUndo.value = emptyList()
+        }
+    }
+
+    fun bulkUndoHandled() {
+        bulkUndo.value = emptyList()
     }
 
     companion object {

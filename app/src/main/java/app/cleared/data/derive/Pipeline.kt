@@ -3,6 +3,7 @@ package app.cleared.data.derive
 import app.cleared.data.model.Currency
 import app.cleared.data.model.Money
 import app.cleared.data.model.Phase
+import app.cleared.data.model.Stage
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
@@ -119,6 +120,12 @@ object Pipeline {
         overdueP90Days: Map<Long, Int>,
         graceDays: Map<Long, Int> = emptyMap()
     ): Boolean {
+        // A record that has landed cannot be late; it has arrived. DATA_MODEL.md's "phase in
+        // (WORK, MONEY)" includes LANDED because landing is a money-phase stage, so this has to be
+        // said separately — otherwise every long-settled record in the history reads as overdue,
+        // which is what the settle-time screen's chase card first showed.
+        if (state.displayStage == Stage.LANDED) return false
+
         val phase = state.displayStage.phase
         if (phase != Phase.WORK && phase != Phase.MONEY) return false
         val p90 = overdueP90Days[state.record.platformId] ?: return false

@@ -2,6 +2,7 @@ package app.cleared.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -9,11 +10,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +33,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import app.cleared.data.model.Stage
 import app.cleared.ui.theme.Cleared
+import app.cleared.ui.theme.ClearedShape
 import app.cleared.ui.theme.Dimens
 
 /**
@@ -68,6 +75,8 @@ fun RecordRow(
     row: RecordRowUi,
     modifier: Modifier = Modifier,
     showDivider: Boolean = true,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
     onClick: () -> Unit = {},
     onLongClick: () -> Unit = {}
 ) {
@@ -75,8 +84,11 @@ fun RecordRow(
     val pressed by interactionSource.collectIsPressedAsState()
 
     val rejected = row.stage == Stage.REJECTED
-    val background =
-        if (pressed) Cleared.tones.surfaceLow else MaterialTheme.colorScheme.surface
+    val background = when {
+        selected -> Cleared.tones.selectedRow
+        pressed -> Cleared.tones.surfaceLow
+        else -> MaterialTheme.colorScheme.surface
+    }
 
     Column(modifier.background(background)) {
         if (showDivider) {
@@ -98,6 +110,11 @@ fun RecordRow(
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectionMode) {
+                SelectionBox(selected = selected)
+                Spacer(Modifier.width(Dimens.rowInternalGap))
+            }
+
             PhaseRail(stage = row.stage, clearedFraction = row.clearedFraction)
 
             Spacer(Modifier.width(Dimens.rowInternalGap))
@@ -143,6 +160,34 @@ fun RecordRow(
                     textAlign = TextAlign.End
                 )
             }
+        }
+    }
+}
+
+/** A 20 dp box ahead of the phase rail, filled with the accent and a white check when selected. */
+@Composable
+private fun SelectionBox(selected: Boolean) {
+    Box(
+        Modifier
+            .size(20.dp)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                ClearedShape.checkbox
+            )
+            .border(
+                Dimens.hairline,
+                if (selected) MaterialTheme.colorScheme.primary else Cleared.tones.outlineButton,
+                ClearedShape.checkbox
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp)
+            )
         }
     }
 }
