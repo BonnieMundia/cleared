@@ -260,7 +260,21 @@ private fun AmountField(
             singleLine = true,
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.width(160.dp).padding(end = 8.dp)
+            modifier = Modifier.width(180.dp).padding(end = 8.dp),
+            // An empty BasicTextField draws nothing at all, which leaves the largest control on the
+            // sheet invisible until it happens to be tapped. The placeholder is the field.
+            decorationBox = { field ->
+                Box(contentAlignment = Alignment.CenterEnd) {
+                    if (amount.isEmpty()) {
+                        Text(
+                            text = "0.00",
+                            style = Cleared.type.sectionFigure.copy(fontSize = 24.sp),
+                            color = Cleared.tones.ghost
+                        )
+                    }
+                    field()
+                }
+            }
         )
     }
 }
@@ -324,7 +338,10 @@ private fun StageRow(phase: Phase, selected: Stage, onSelect: (Stage) -> Unit) {
                 Text(
                     text = stageLabel(stage),
                     style = Cleared.type.stageChip,
-                    color = if (isSelected) Color.White else onContainer
+                    // The spec says a white label on the filled chip, which holds for the light
+                    // violet and green and not for the dark ones — white on #A086DF is 2.8:1.
+                    // `surface` is white in light and near-black in dark, which is what it meant.
+                    color = if (isSelected) MaterialTheme.colorScheme.surface else onContainer
                 )
             }
         }

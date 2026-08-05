@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.cleared.ui.components.PhaseRail
 import app.cleared.ui.components.StageChip
@@ -213,16 +214,28 @@ private fun SplitHeroBar(clearedFraction: Float) {
 
 @Composable
 private fun StatStrip(stats: List<StatCell>) {
-    Row(Modifier.fillMaxWidth()) {
+    // `EUR 1,000.00` is wide enough to run into the next cell at equal weights, so the columns are
+    // spaced and each figure keeps to one line.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         stats.forEach { cell ->
             Column(Modifier.weight(1f)) {
-                Text(cell.label, style = Cleared.type.caption, color = Cleared.tones.tertiary)
+                Text(
+                    text = cell.label,
+                    style = Cleared.type.caption,
+                    color = Cleared.tones.tertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Spacer(Modifier.height(3.dp))
                 Text(
                     text = cell.value,
-                    style = Cleared.type.rowFigure,
+                    // A third of the gutter is 108 dp; `EUR 1,000.00` needs 13 sp mono to fit it
+                    // without clipping, and a figure that is clipped is worse than a smaller one.
+                    style = Cleared.type.tableFigure,
                     color = if (cell.isNegative) Cleared.semantics.onRejectContainer
-                    else MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -335,7 +348,12 @@ private fun Settlements(state: RecordDetailUi, onOpen: (Long) -> Unit) {
                         Text(
                             text = settlement.label,
                             style = Cleared.type.rowPrimary,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // The label yields to the chip rather than crushing it: a truncated
+                            // "60% on approv…" still reads; a chip one letter wide does not.
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         Spacer(Modifier.width(8.dp))
                         StageChip(stage = settlement.stage)

@@ -48,7 +48,7 @@ object Ledger {
      * A split record's numerator takes each settlement's cleared KES as it lands, so a record part
      * way through contributes part of its value — which is why the effective rate moves twice.
      */
-    private fun settlementKesCleared(detail: RecordDetail, settlementId: Long, amountMinor: Long): BigDecimal {
+    fun settlementKesCleared(detail: RecordDetail, settlementId: Long, amountMinor: Long): BigDecimal {
         val ownFees = detail.fees.filter { it.settlementId == settlementId }
         val sameCurrencyFees = ownFees.filter { it.currency == detail.record.currency }.sumOf { it.amountMinor }
         val kesFees = ownFees.filter { it.currency == Currency.KES }.sumOf { it.amountMinor }

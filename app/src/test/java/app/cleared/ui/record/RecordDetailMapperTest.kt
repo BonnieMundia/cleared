@@ -228,6 +228,26 @@ class RecordDetailMapperTest {
         assertTrue(landed.ledger.last().totalCleared)
     }
 
+    /**
+     * A record still in flight has not cleared anything, and a green `Cleared KES 0` under it reads
+     * as a loss rather than as work in progress.
+     */
+    @Test
+    fun `an unlanded record shows an estimate rather than a cleared zero`() {
+        val ui = RecordDetailMapper.build(
+            detail = SampleData.pipelineById.getValue(1L),
+            platform = halo,
+            rates = SampleData.RATES,
+            now = SampleData.NOW
+        )
+        val footer = ui.ledger.last()
+        assertEquals("Expected to clear", footer.label)
+        assertEquals("estimated at today's mid rate", footer.subLabel)
+        assertFalse(footer.totalCleared)
+        // USD 184.00 at today's mid, with no fees logged against it yet.
+        assertEquals("KES 23,626", footer.value)
+    }
+
     @Test
     fun `the reversal reason is carried through from the event log`() {
         assertEquals("Name mismatch at the bank", reversedUi.reversalReason)
@@ -266,6 +286,30 @@ class RecordDetailMapperTest {
         assertEquals(0.6f, partPaid.clearedFraction, 1e-6f)
         assertEquals("KES 60,000 cleared", partPaid.clearedText)
         assertEquals("KES 59,040 in flight", partPaid.inFlightText)
+    }
+
+    /**
+     * The two figures under the split bar have to add up to the one above it. Valuing the whole
+     * record at a single rate does not: it revalues money that has already cleared.
+     */
+    @Test
+    fun `the split hero is what cleared plus what is in flight`() {
+        assertEquals("KES 119,040", partPaid.heroFigure)
+        assertEquals(60_000L + 59_040L, 119_040L)
+    }
+
+    /**
+     * A landed settlement keeps the rate it actually converted at. Only the unlanded one is an
+     * estimate, and only estimates move with the mid — on the device the landed settlement was
+     * showing today's mid and disagreeing with the cleared figure right above it.
+     */
+    @Test
+    fun `a landed settlement is not revalued at today's mid`() {
+        val (first, second) = partPaid.settlements
+        // Landed: EUR 600.00 at the 100.00 it converted at, not at the 147.60 mid.
+        assertEquals("KES 60,000", first.kes)
+        // In flight: EUR 400.00 at today's mid.
+        assertEquals("KES 59,040", second.kes)
     }
 
     /** The rate belongs here and nowhere else on this screen. */

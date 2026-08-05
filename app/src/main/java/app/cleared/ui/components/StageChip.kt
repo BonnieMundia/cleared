@@ -61,7 +61,15 @@ fun StageChip(
             .background(container, ClearedShape.stageChip)
             .padding(horizontal = 7.dp, vertical = 3.dp)
     ) {
-        Text(text = label, style = Cleared.type.stageChip, color = onContainer)
+        // A stage chip never wraps. Squeezed inside a row it would otherwise set one letter per
+        // line, which is what "Payout issued" did on the settlement cards.
+        Text(
+            text = label,
+            style = Cleared.type.stageChip,
+            color = onContainer,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 

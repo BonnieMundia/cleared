@@ -163,8 +163,16 @@ object RecordDetailMapper {
     ): String = when {
         // The money exists; it is sitting in the wrong place. Frame `4a` renders this in onSurface.
         reversed -> MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail, rates)))
-        // A split record's hero is the record's whole value, not the part that has landed.
-        state.isSplit -> MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail, rates)))
+
+        // A split record's hero is its whole value — which is what landed at the rate it actually
+        // converted at, plus what is still in flight at today's mid. Valuing the whole record at
+        // one rate would revalue money that has already cleared, and would leave the two figures
+        // under the split bar not adding up to the figure above it.
+        state.isSplit -> {
+            val midRate = app.cleared.data.derive.Pipeline.rateFor(detail.record.currency, rates)
+            val inFlight = Money.fromMinor(state.owedMinor).multiply(midRate)
+            MoneyFormat.kes(Money.toKes(Ledger.finalKesCleared(detail) + inFlight))
+        }
         state.displayStage == Stage.LANDED -> MoneyFormat.kes(Money.toKes(Ledger.finalKesCleared(detail)))
         else -> MoneyFormat.formatMinor(detail.record.currency, detail.record.grossMinor)
     }
@@ -267,18 +275,28 @@ object RecordDetailMapper {
             )
         }
 
-        rows += if (reversed) {
-            LedgerRow(
+        rows += when {
+            reversed -> LedgerRow(
                 "Back in the wallet",
                 MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail, rates))),
                 isTotal = true
             )
-        } else {
-            LedgerRow(
+
+            state.displayStage == Stage.LANDED || state.isSplit -> LedgerRow(
                 "Cleared",
                 MoneyFormat.kes(Money.toKes(Ledger.finalKesCleared(detail))),
                 isTotal = true,
                 totalCleared = true
+            )
+
+            // Nothing has cleared yet, and saying "Cleared KES 0" in green about a record that is
+            // simply still in flight reads as a loss. What it is worth is an estimate at today's
+            // mid, and the sub-label says so.
+            else -> LedgerRow(
+                label = "Expected to clear",
+                value = MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail, rates))),
+                subLabel = "estimated at today's mid rate",
+                isTotal = true
             )
         }
 
@@ -339,17 +357,26 @@ object RecordDetailMapper {
         p90Days: Int?
     ): List<SettlementCardUi> {
         if (!state.isSplit) return emptyList()
-        val rate = app.cleared.data.derive.Pipeline.rateFor(state.record.currency, rates)
+        val midRate = app.cleared.data.derive.Pipeline.rateFor(state.record.currency, rates)
         return state.settlementStates.map { settlement ->
+            // A landed settlement keeps the rate it actually converted at, forever. Only the
+            // unlanded one is an estimate, and estimates move with the mid.
+            val kes = if (settlement.isLanded) {
+                Ledger.settlementKesCleared(
+                    state.detail,
+                    settlement.settlement.id,
+                    settlement.settlement.amountMinor
+                )
+            } else {
+                Money.fromMinor(settlement.settlement.amountMinor).multiply(midRate)
+            }
             SettlementCardUi(
                 id = settlement.settlement.id,
                 label = settlement.settlement.label,
                 stage = settlement.stage,
                 timing = timing(state, settlement, p90Days),
                 amount = MoneyFormat.formatMinor(state.record.currency, settlement.settlement.amountMinor),
-                kes = MoneyFormat.kes(
-                    Money.toKes(Money.fromMinor(settlement.settlement.amountMinor).multiply(rate))
-                ),
+                kes = MoneyFormat.kes(Money.toKes(kes)),
                 isLanded = settlement.isLanded
             )
         }
