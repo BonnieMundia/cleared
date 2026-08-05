@@ -56,19 +56,26 @@ object Ledger {
         return clearedFrom(detail, converted, kesFees, settlementId)
     }
 
+    /**
+     * @param rates the current mid, used only when no snapshot exists. A landed record always has
+     *        one and keeps it forever; a payout that bounced on the way to the bank may never have
+     *        converted at all, and the money sitting in the wallet is then worth today's mid.
+     */
     private fun clearedFrom(
         detail: RecordDetail,
         converted: BigDecimal,
         kesFeesMinor: Long,
-        settlementId: Long? = null
+        settlementId: Long? = null,
+        rates: Map<Currency, BigDecimal> = emptyMap()
     ): BigDecimal {
         if (detail.record.currency == Currency.KES) {
             return converted - Money.fromMinor(kesFeesMinor)
         }
-        val snapshot = detail.conversions.firstOrNull { it.settlementId == settlementId }
-            ?: detail.conversions.firstOrNull()
+        val rate = detail.conversions.firstOrNull { it.settlementId == settlementId }?.rateApplied
+            ?: detail.conversions.firstOrNull()?.rateApplied
+            ?: rates[detail.record.currency]
             ?: return BigDecimal.ZERO
-        return converted.multiply(snapshot.rateApplied) - Money.fromMinor(kesFeesMinor)
+        return converted.multiply(rate) - Money.fromMinor(kesFeesMinor)
     }
 
     /**
@@ -78,8 +85,8 @@ object Ledger {
      * puts in the hero — the money exists, it is just in the wrong place, so it is rendered in
      * `onSurface` rather than in the rejected colour.
      */
-    fun arrivedKes(detail: RecordDetail): BigDecimal =
-        clearedFrom(detail, convertedAmount(detail), feesInKes(detail))
+    fun arrivedKes(detail: RecordDetail, rates: Map<Currency, BigDecimal> = emptyMap()): BigDecimal =
+        clearedFrom(detail, convertedAmount(detail), feesInKes(detail), rates = rates)
 
     /**
      * What the record was worth at mid-market — the yardstick the cost percentage is measured

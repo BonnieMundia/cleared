@@ -63,23 +63,7 @@ fun RecordDetailScreen(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp),
-        topBar = {
-            TopAppBar(
-                title = { Text("Record", style = Cleared.type.pushedTitle) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                windowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp),
-                modifier = Modifier.height(Dimens.topAppBarWithBack)
-            )
-        }
+        topBar = { PushedScreenBar(title = "Record", onBack = onBack) }
     ) { padding ->
         Column(
             Modifier
@@ -116,6 +100,36 @@ fun RecordDetailScreen(
 
             Spacer(Modifier.height(32.dp))
         }
+    }
+}
+
+/**
+ * The pushed-screen app bar: 56 dp, back chevron, title.
+ *
+ * Built directly rather than with M3's `TopAppBar`, whose internal layout assumes 64 dp — squeezed
+ * to the 56 dp the spec calls for, its title and navigation icon stop sharing a baseline.
+ */
+@Composable
+private fun PushedScreenBar(title: String, onBack: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(Dimens.topAppBarWithBack)
+            .background(MaterialTheme.colorScheme.background),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.size(Dimens.minTouchTarget)) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Text(
+            text = title,
+            style = Cleared.type.pushedTitle,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
@@ -266,11 +280,8 @@ private fun MoneyLedger(rows: List<LedgerRow>) {
                     style = if (row.isTotal) {
                         Cleared.type.rowFigure.copy(fontWeight = FontWeight.SemiBold)
                     } else Cleared.type.tableFigure,
-                    color = when {
-                        row.isTotal -> Cleared.semantics.onMoneyContainer
-                        row.isNegative -> MaterialTheme.colorScheme.onSurface
-                        else -> MaterialTheme.colorScheme.onSurface
-                    },
+                    color = if (row.isTotal && row.totalCleared) Cleared.semantics.onMoneyContainer
+                    else MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.End
                 )
             }

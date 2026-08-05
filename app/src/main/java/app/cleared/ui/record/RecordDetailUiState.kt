@@ -39,7 +39,12 @@ data class LedgerRow(
     val value: String,
     val subLabel: String? = null,
     val isTotal: Boolean = false,
-    val isNegative: Boolean = false
+    val isNegative: Boolean = false,
+    /**
+     * Green is reserved for money that actually cleared. A reversal's total is the sum sitting back
+     * in a wallet — real, but not an outcome to congratulate — so it renders neutral.
+     */
+    val totalCleared: Boolean = false
 )
 
 data class SettlementCardUi(
@@ -116,7 +121,7 @@ object RecordDetailMapper {
             stage = state.displayStage,
             chipLabel = if (state.isPartPaid) "Part paid" else stageLabel(state.displayStage),
             subLine = subLine(detail),
-            heroFigure = hero(detail, state, reversed),
+            heroFigure = hero(detail, state, reversed, rates),
             heroTone = when {
                 reversed || state.isPartPaid -> HeroTone.Neutral
                 state.displayStage == Stage.LANDED -> HeroTone.Cleared
@@ -125,7 +130,7 @@ object RecordDetailMapper {
             heroCaption = heroCaption(detail, state, reversed),
             stats = stats(detail, state, platform, rates),
             phases = phases,
-            ledger = ledger(detail, state, reversed),
+            ledger = ledger(detail, state, reversed, rates),
             closingNote = closingNote(detail, state, reversed),
             isReversed = reversed,
             reversalReason = if (reversed) reversalReason(detail) else null,
@@ -150,11 +155,16 @@ object RecordDetailMapper {
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
 
-    private fun hero(detail: RecordDetail, state: RecordState, reversed: Boolean): String = when {
+    private fun hero(
+        detail: RecordDetail,
+        state: RecordState,
+        reversed: Boolean,
+        rates: Map<Currency, BigDecimal>
+    ): String = when {
         // The money exists; it is sitting in the wrong place. Frame `4a` renders this in onSurface.
-        reversed -> MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail)))
+        reversed -> MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail, rates)))
         // A split record's hero is the record's whole value, not the part that has landed.
-        state.isSplit -> MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail)))
+        state.isSplit -> MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail, rates)))
         state.displayStage == Stage.LANDED -> MoneyFormat.kes(Money.toKes(Ledger.finalKesCleared(detail)))
         else -> MoneyFormat.formatMinor(detail.record.currency, detail.record.grossMinor)
     }
@@ -215,7 +225,12 @@ object RecordDetailMapper {
      * returns the principal and keeps them, and the footer reads `Back in the wallet` rather than
      * `Cleared`.
      */
-    private fun ledger(detail: RecordDetail, state: RecordState, reversed: Boolean): List<LedgerRow> {
+    private fun ledger(
+        detail: RecordDetail,
+        state: RecordState,
+        reversed: Boolean,
+        rates: Map<Currency, BigDecimal>
+    ): List<LedgerRow> {
         val record = detail.record
         val rows = mutableListOf<LedgerRow>()
 
@@ -253,9 +268,18 @@ object RecordDetailMapper {
         }
 
         rows += if (reversed) {
-            LedgerRow("Back in the wallet", MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail))), isTotal = true)
+            LedgerRow(
+                "Back in the wallet",
+                MoneyFormat.kes(Money.toKes(Ledger.arrivedKes(detail, rates))),
+                isTotal = true
+            )
         } else {
-            LedgerRow("Cleared", MoneyFormat.kes(Money.toKes(Ledger.finalKesCleared(detail))), isTotal = true)
+            LedgerRow(
+                "Cleared",
+                MoneyFormat.kes(Money.toKes(Ledger.finalKesCleared(detail))),
+                isTotal = true,
+                totalCleared = true
+            )
         }
 
         return rows

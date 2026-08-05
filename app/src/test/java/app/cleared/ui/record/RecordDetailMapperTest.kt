@@ -173,6 +173,61 @@ class RecordDetailMapperTest {
         assertEquals(listOf(Stage.SUBMITTED, Stage.APPROVED), work.entries.map { it.stage })
     }
 
+    /**
+     * The chain breaks where the money was, not in a phase of its own.
+     *
+     * Frame `4a` runs the money phase green through `Received` and *then* breaks it: the dashed
+     * connector and the hollow ring belong inside that block. Grouping strictly by phase put the
+     * reversal in a third `ENDED` section and left `Received` drawing no connector at all, so the
+     * break was invisible.
+     */
+    @Test
+    fun `the reversal ends the money phase rather than opening one of its own`() {
+        assertEquals(2, reversedUi.phases.size)
+
+        val money = reversedUi.phases[1]
+        assertEquals(Phase.MONEY, money.phase)
+        assertEquals(
+            listOf(Stage.PAYOUT_ISSUED, Stage.RECEIVED, Stage.REVERSED),
+            money.entries.map { it.stage }
+        )
+        assertTrue("the reversal is the record's last event", money.entries.last().isLast)
+    }
+
+    /** A rejection ends the work phase the same way — it never enters the money phase at all. */
+    @Test
+    fun `a rejection ends the work phase rather than opening one of its own`() {
+        val ui = RecordDetailMapper.build(
+            detail = SampleData.pipelineById.getValue(8L),
+            platform = halo,
+            rates = SampleData.RATES,
+            now = SampleData.NOW
+        )
+        assertEquals(1, ui.phases.size)
+        assertEquals(Phase.WORK, ui.phases[0].phase)
+        assertEquals(Stage.REJECTED, ui.phases[0].entries.last().stage)
+    }
+
+    /**
+     * A payout can bounce before it was ever converted, and the money then sits in a wallet in its
+     * original currency. Valuing it needs today's mid rather than a snapshot that does not exist —
+     * without the fallback the hero read `KES 0` for a wallet holding USD 190.
+     */
+    @Test
+    fun `a reversal with no conversion snapshot is valued at the current mid`() {
+        val withoutSnapshot = reversedRecord().copy(conversions = emptyList())
+        val ui = RecordDetailMapper.build(withoutSnapshot, halo, SampleData.RATES, now = SampleData.NOW)
+        // USD 200.00 less USD 10.00 commission at 128.40, less the KES 500 handling fee.
+        assertEquals("KES 23,896", ui.heroFigure)
+    }
+
+    /** Green is for money that cleared. A reversal's total is real but is not a good outcome. */
+    @Test
+    fun `the reversed total is not rendered as cleared`() {
+        assertFalse(reversedUi.ledger.last().totalCleared)
+        assertTrue(landed.ledger.last().totalCleared)
+    }
+
     @Test
     fun `the reversal reason is carried through from the event log`() {
         assertEquals("Name mismatch at the bank", reversedUi.reversalReason)

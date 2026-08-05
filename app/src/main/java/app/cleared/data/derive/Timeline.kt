@@ -48,11 +48,17 @@ object Timeline {
 
         // Group into contiguous phase blocks, so a record that re-entered a phase after an undo
         // reads as two blocks rather than one impossible interleaving.
+        //
+        // A terminal event joins the block it ended rather than opening one of its own. Frame `4a`
+        // is explicit: the money phase runs green through Received and *then* breaks, with the
+        // dashed connector and the hollow ring inside that block. A rejection ends the work phase
+        // the same way — it leaves the work phase without ever entering the money phase.
         val blocks = mutableListOf<MutableList<TimelineEntry>>()
         for (entry in entries) {
             val last = blocks.lastOrNull()
-            if (last != null && last.first().stage.phase == entry.stage.phase) last += entry
-            else blocks += mutableListOf(entry)
+            val joinsPrevious = last != null &&
+                (last.first().stage.phase == entry.stage.phase || entry.stage.phase == Phase.TERMINAL)
+            if (joinsPrevious) last!! += entry else blocks += mutableListOf(entry)
         }
 
         return blocks.mapIndexed { index, block ->

@@ -161,8 +161,19 @@ object DevSeed {
                 ev(id, 1, Stage.SUBMITTED, start),
                 ev(id, 2, Stage.APPROVED, start.plus(Duration.ofDays(4))),
                 ev(id, 3, Stage.PAYOUT_ISSUED, start.plus(Duration.ofDays(9))),
-                ev(id, 4, Stage.RECEIVED, start.plus(Duration.ofDays(12))),
+                ev(id, 4, Stage.RECEIVED, start.plus(Duration.ofDays(12)), "Payoneer"),
                 ev(id, 5, Stage.REVERSED, Instant.now().minus(Duration.ofDays(ageDays)), "Name mismatch at the bank")
+            )
+        )
+        db.conversionDao().insertAll(
+            listOf(
+                ConversionSnapshotEntity(
+                    recordId = id,
+                    fromCurrency = currency,
+                    rateApplied = BigDecimal("126.85"),
+                    midRate = BigDecimal("128.40"),
+                    appliedAt = start.plus(Duration.ofDays(9))
+                )
             )
         )
         db.feeLineDao().insertAll(
