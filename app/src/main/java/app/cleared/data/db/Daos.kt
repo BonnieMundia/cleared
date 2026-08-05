@@ -17,6 +17,7 @@ import app.cleared.data.db.entity.RecordDetail
 import app.cleared.data.db.entity.SettlementEntity
 import app.cleared.data.db.entity.StageEventEntity
 import app.cleared.data.db.entity.SyncOpEntity
+import app.cleared.data.db.entity.TaxSettingsEntity
 import app.cleared.data.db.entity.WalletBalanceEntity
 import app.cleared.data.db.entity.WithdrawalRouteEntity
 import app.cleared.data.model.SyncOpState
@@ -149,6 +150,13 @@ interface SyncOpDao {
 
     @Query("UPDATE sync_op SET state = :state, attempts = :attempts, nextAttemptAt = :nextAttemptAt WHERE id = :id")
     suspend fun markAttempt(id: Long, state: SyncOpState, attempts: Int, nextAttemptAt: Instant?)
+}
+
+@Dao
+interface TaxSettingsDao {
+    @Query("SELECT * FROM tax_settings WHERE id = 0") fun observe(): Flow<TaxSettingsEntity?>
+    @Query("SELECT * FROM tax_settings WHERE id = 0") suspend fun get(): TaxSettingsEntity?
+    @Upsert suspend fun upsert(settings: TaxSettingsEntity)
 }
 
 @Dao

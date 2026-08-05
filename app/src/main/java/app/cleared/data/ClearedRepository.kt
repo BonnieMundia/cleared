@@ -7,6 +7,9 @@ import app.cleared.data.db.entity.PlatformEntity
 import app.cleared.data.db.entity.RecordDetail
 import app.cleared.data.db.entity.StageEventEntity
 import app.cleared.data.db.entity.SyncOpEntity
+import app.cleared.data.db.entity.TaxSettingsEntity
+import app.cleared.data.db.entity.WalletBalanceEntity
+import app.cleared.data.db.entity.WithdrawalRouteEntity
 import app.cleared.data.derive.Pipeline
 import app.cleared.data.derive.PipelineTotals
 import app.cleared.data.derive.PlatformStatistics
@@ -123,6 +126,14 @@ class ClearedRepository(private val db: ClearedDatabase) {
     }
 
     suspend fun platforms(): List<PlatformEntity> = db.platformDao().all()
+
+    fun observeWallets(): Flow<List<WalletBalanceEntity>> = db.walletDao().observeAll()
+
+    fun observeRoutes(): Flow<List<WithdrawalRouteEntity>> = db.withdrawalRouteDao().observeAll()
+
+    fun observeTaxSettings(): Flow<TaxSettingsEntity?> = db.taxSettingsDao().observe()
+
+    suspend fun saveTaxSettings(settings: TaxSettingsEntity) = db.taxSettingsDao().upsert(settings)
 
     fun observeRecordDetail(recordId: Long): Flow<RecordDetail?> = db.recordDao().observeDetail(recordId)
 

@@ -3,14 +3,18 @@ package app.cleared.data.seed
 import app.cleared.data.db.ClearedDatabase
 import app.cleared.data.db.entity.ConversionSnapshotEntity
 import app.cleared.data.db.entity.EarningRecordEntity
+import app.cleared.data.db.entity.FeeLineEntity
 import app.cleared.data.db.entity.FxRateEntity
 import app.cleared.data.db.entity.PlatformEntity
 import app.cleared.data.db.entity.SettlementEntity
 import app.cleared.data.db.entity.StageEventEntity
+import app.cleared.data.db.entity.TaxSettingsEntity
+import app.cleared.data.db.entity.WalletBalanceEntity
 import app.cleared.data.db.entity.WithdrawalRouteEntity
 import app.cleared.data.model.BankDestination
 import app.cleared.data.model.Currency
 import app.cleared.data.model.EventSource
+import app.cleared.data.model.FeeKind
 import app.cleared.data.model.Money
 import app.cleared.data.model.PayoutDestination
 import app.cleared.data.model.PlatformKind
@@ -93,6 +97,25 @@ object DevSeed {
         reversed(db, 9, 3, "200.00", Currency.USD, 17, monday)
         partPaid(db, 10, 1, monday)
 
+        // Wallet balances for frame `1c`, and the Tax screen's settings row.
+        val idleSince = Instant.now().minus(Duration.ofDays(19))
+        db.walletDao().upsertAll(
+            listOf(
+                WalletBalanceEntity(WalletProvider.PAYPAL, Currency.USD, Money.minorOf("412.60"), now, idleSince),
+                WalletBalanceEntity(WalletProvider.PAYONEER, Currency.USD, Money.minorOf("268.00"), now, idleSince),
+                WalletBalanceEntity(WalletProvider.PAYONEER, Currency.EUR, Money.minorOf("340.00"), now, idleSince)
+            )
+        )
+        db.taxSettingsDao().upsert(
+            TaxSettingsEntity(
+                personalRate = 0.25,
+                turnoverTaxRate = 0.03,
+                actualSetAsideKes = 164_000,
+                setAsideLocation = "Equity savings",
+                setAsideLastMoved = LocalDate.now(NAIROBI).minusDays(8)
+            )
+        )
+
         // The history behind the platform aggregates. Without it every effective rate on frame `1b`
         // is zero, because nothing has ever landed.
         //
@@ -144,16 +167,50 @@ object DevSeed {
             val landedAt = Instant.now().minus(Duration.ofDays(30L + i * 9))
             val submittedAt = landedAt.minus(Duration.ofDays(settleDays[i]))
             val recordId = id++
+
+            // Give each record the fees and the spread a real one carries, without moving what it
+            // cleared. Cleared is (gross − same-currency fees) × rateApplied − KES fees, so adding
+            // the commission and the bank fee back onto the gross leaves it exactly where it was:
+            //
+            //     (share + commission + 2.20 − commission) × 100 − 220  ==  share × 100
+            //
+            // The spread costs nothing at all in that identity, because cost is measured as
+            // (mid − applied) × converted while cleared only ever uses the applied rate. So the mid
+            // can sit 2% above without disturbing a single platform total.
+            val commissionMinor = (shares[i] * 5) / 100
+            val bankFeeKesMinor = 22_000L
+            val grossMinor = shares[i] + commissionMinor + bankFeeKesMinor / 100
+
             db.recordDao().insert(
                 EarningRecordEntity(
                     id = recordId,
                     platformId = platformId,
-                    grossMinor = shares[i],
+                    grossMinor = grossMinor,
                     currency = currency,
                     hoursWorked = (hourTenths[i] - unpaidTenths[i]) / 10.0,
                     hoursUnpaid = unpaidTenths[i] / 10.0,
                     expectedWeekStart = LocalDate.ofInstant(landedAt, NAIROBI),
                     createdAt = submittedAt
+                )
+            )
+            db.feeLineDao().insertAll(
+                listOf(
+                    FeeLineEntity(
+                        recordId = recordId,
+                        kind = FeeKind.PLATFORM_COMMISSION,
+                        label = "Platform commission",
+                        amountMinor = commissionMinor,
+                        currency = currency,
+                        occurredAt = landedAt
+                    ),
+                    FeeLineEntity(
+                        recordId = recordId,
+                        kind = FeeKind.BANK_CREDIT_FEE,
+                        label = "Bank credit fee",
+                        amountMinor = bankFeeKesMinor,
+                        currency = Currency.KES,
+                        occurredAt = landedAt
+                    )
                 )
             )
             db.stageEventDao().insertAll(
@@ -172,7 +229,9 @@ object DevSeed {
                         recordId = recordId,
                         fromCurrency = currency,
                         rateApplied = BigDecimal("100.00"),
-                        midRate = BigDecimal("100.00"),
+                        // 2% above what was applied — the spread, which is a real cost even though
+                        // no line item is ever issued for it, and the largest one on frame `1c`.
+                        midRate = BigDecimal("102.00"),
                         appliedAt = landedAt
                     )
                 )

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The only thing ever shared out of this app: a CSV the user asked for, written to the app's own
+    cache. Nothing else in the app's storage is reachable through this provider.
+-->
+<paths>
+    <cache-path name="export" path="export/" />
+</paths>

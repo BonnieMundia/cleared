@@ -230,6 +230,25 @@ data class SyncOpEntity(
     val sizeBytes: Int
 )
 
+/**
+ * The Tax screen's own settings — the two rates and what has actually been put aside.
+ *
+ * design/DATA_MODEL.md does not give this a table, but it requires one: "Both rates must be
+ * user-editable — tax law changes and this app should not need a release to follow it." Frame `1d`
+ * also shows where the money is held and when it last moved, and neither is derivable from records.
+ *
+ * A single row, id 0.
+ */
+@Entity(tableName = "tax_settings")
+data class TaxSettingsEntity(
+    @PrimaryKey val id: Long = 0,
+    val personalRate: Double = 0.25,
+    val turnoverTaxRate: Double = 0.03,
+    val actualSetAsideKes: Long = 0,
+    val setAsideLocation: String? = null,
+    val setAsideLastMoved: LocalDate? = null
+)
+
 @Entity(tableName = "listing")
 data class ListingEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

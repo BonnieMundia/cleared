@@ -28,11 +28,17 @@ data class CostBreakdown(
 
 object CostOfGettingPaid {
 
-    fun of(states: List<RecordState>, rates: Map<Currency, BigDecimal>): CostBreakdown {
+    /** @param year restricts to money that landed in that calendar year. Null is all time. */
+    fun of(
+        states: List<RecordState>,
+        rates: Map<Currency, BigDecimal>,
+        year: Int? = null
+    ): CostBreakdown {
         val byKind = mutableMapOf<FeeKind, BigDecimal>()
         var landed = BigDecimal.ZERO
 
         for (state in states) {
+            if (year != null && Tax.landedYear(state) != year) continue
             val detail = state.detail
             landed += Ledger.finalKesCleared(detail)
 
