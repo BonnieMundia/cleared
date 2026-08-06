@@ -104,6 +104,21 @@ class FixtureDiscoverySource(
                     note = "Platform you have never used. No settle-time history, so the days " +
                         "figure is their claim, not your data."
                 ),
+                // Hours absent on a platform with history — the shape of nearly every post a real
+                // feed will return, and the case the per-platform estimate exists for.
+                listing(
+                    id = 6,
+                    platform = "Halo Data",
+                    title = "Sentiment pass, mixed queue",
+                    kind = "AI training",
+                    pay = "180.00",
+                    currency = Currency.USD,
+                    estHours = null,
+                    assessmentHours = null,
+                    source = "platform board",
+                    seenAt = now.minus(Duration.ofHours(4)),
+                    note = "No size given. Priced from what Halo Data work has taken you before."
+                ),
                 listing(
                     id = 5,
                     platform = "Vector Annotate",

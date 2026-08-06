@@ -21,7 +21,19 @@ data class PlatformStats(
     val landedCount: Int,
     val rejectedCount: Int,
     val reversedCount: Int,
-    val recordCount: Int
+    val recordCount: Int,
+    /**
+     * Work hours per one unit of this platform's pay currency, from history. Null until there is
+     * any. Drives the hours a Discovery listing is estimated at — see [PlatformStatistics.hoursModel].
+     */
+    val hoursPerPayUnit: Double? = null,
+    /**
+     * What an unpaid assessment costs here, typically. A platform trait rather than a job trait:
+     * Halo's calibration set is the same two hours whether the batch is large or small.
+     */
+    val typicalAssessmentHours: Double = 0.0,
+    /** How many records the hours model was built from, so the UI can say. */
+    val hoursSampleCount: Int = 0
 ) {
     /** landedCount ÷ (landedCount + rejectedCount). Reversals are in neither term. */
     val approvalRate: Double?
@@ -60,6 +72,8 @@ object PlatformStatistics {
             cleared.divide(BigDecimal.valueOf(hours), MathContext.DECIMAL64)
         )
 
+        val model = hoursModel(platform, mine)
+
         return PlatformStats(
             platform = platform,
             totalPaidKes = Money.toKes(cleared),
@@ -69,7 +83,57 @@ object PlatformStatistics {
             landedCount = mine.count { it.displayStage == Stage.LANDED },
             rejectedCount = mine.count { it.displayStage == Stage.REJECTED },
             reversedCount = mine.count { it.displayStage == Stage.REVERSED },
-            recordCount = mine.size
+            recordCount = mine.size,
+            hoursPerPayUnit = model.hoursPerPayUnit,
+            typicalAssessmentHours = model.typicalAssessmentHours,
+            hoursSampleCount = model.sampleCount
+        )
+    }
+
+    private data class HoursModel(
+        val hoursPerPayUnit: Double?,
+        val typicalAssessmentHours: Double,
+        val sampleCount: Int
+    )
+
+    /**
+     * How long work on this platform takes, per unit of what it pays.
+     *
+     * Deliberately **not** derived from the effective rate. Estimating a listing's hours as
+     * `netKes / effectiveRate` would make its projected rate come back as the platform's historical
+     * rate every time, for every listing — an answer that cannot tell one job from another. This
+     * divides hours by *stated pay* instead, which is a different quantity, and keeps the
+     * assessment separate so it stays a fixed cost.
+     *
+     * That separation is what makes the estimate informative: a fixed two-hour calibration set
+     * ruins a small job and barely dents a large one, and the projection now says so.
+     *
+     * Prospects are excluded — they carry pay with no work logged yet, and would drag the estimate
+     * toward zero hours for every job on the platform.
+     */
+    private fun hoursModel(platform: PlatformEntity, records: List<RecordState>): HoursModel {
+        val priced = records.filter {
+            it.record.carriesHours &&
+                it.record.currency == platform.payCurrency &&
+                it.displayStage != Stage.PROSPECT &&
+                it.record.hoursWorked > 0.0 &&
+                it.record.grossMinor > 0
+        }
+
+        val grossUnits = priced.sumOf { Money.fromMinor(it.record.grossMinor).toDouble() }
+        val workHours = priced.sumOf { it.record.hoursWorked }
+
+        val withAssessment = records.filter { it.record.carriesHours && it.record.hoursUnpaid > 0.0 }
+
+        return HoursModel(
+            hoursPerPayUnit = if (grossUnits > 0.0 && workHours > 0.0) workHours / grossUnits else null,
+            // The median, not the mean: one onboarding marathon should not become the expectation
+            // for every later assessment.
+            typicalAssessmentHours = withAssessment
+                .map { it.record.hoursUnpaid }
+                .sorted()
+                .let { if (it.isEmpty()) 0.0 else it[it.size / 2] },
+            sampleCount = priced.size
         )
     }
 

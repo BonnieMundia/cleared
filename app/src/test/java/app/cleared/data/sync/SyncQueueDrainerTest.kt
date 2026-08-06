@@ -1,4 +1,4 @@
-﻿package app.cleared.data.sync
+package app.cleared.data.sync
 
 import app.cleared.data.db.entity.SyncOpEntity
 import app.cleared.data.model.EventSource
@@ -51,7 +51,7 @@ class SyncQueueDrainerTest {
 
     /**
      * Ascending id, which is the ordering key DATA_MODEL.md names. Note the ops here were all
-     * written in the *same millisecond* â€” ordering by `createdAt` would leave them undefined, which
+     * written in the *same millisecond* — ordering by `createdAt` would leave them undefined, which
      * is exactly why id is the key.
      */
     @Test
@@ -127,7 +127,7 @@ class SyncQueueDrainerTest {
         assertEquals(now.plus(Duration.ofMinutes(2)).plus(Duration.ofMinutes(2)), second.nextAttemptAt)
     }
 
-    /** An op that is not due yet is left alone â€” otherwise the backoff would mean nothing. */
+    /** An op that is not due yet is left alone — otherwise the backoff would mean nothing. */
     @Test
     fun `an op inside its backoff window is not pushed`() = runBlocking {
         var pushes = 0

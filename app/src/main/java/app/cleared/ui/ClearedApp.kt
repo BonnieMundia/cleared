@@ -1,4 +1,4 @@
-﻿package app.cleared.ui
+package app.cleared.ui
 
 import android.content.Context
 import android.content.Intent
@@ -204,7 +204,7 @@ fun ClearedApp() {
                 val context = LocalContext.current
 
                 // The export hands the file to the system share sheet. The user picks where it
-                // goes, or picks nothing â€” the app never sends it anywhere itself.
+                // goes, or picks nothing — the app never sends it anywhere itself.
                 LaunchedEffect(export) {
                     val payload = export ?: return@LaunchedEffect
                     runCatching { shareCsv(context, payload.fileName, payload.content) }
@@ -308,7 +308,7 @@ fun ClearedApp() {
 /**
  * Writes the CSV to the app's own cache and offers it to the system share sheet.
  *
- * A `FileProvider` grant rather than a world-readable file, and one the user resolves themselves â€”
+ * A `FileProvider` grant rather than a world-readable file, and one the user resolves themselves —
  * this app never sends anything anywhere on its own.
  */
 private fun shareCsv(context: Context, fileName: String, content: String) {

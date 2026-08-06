@@ -5,6 +5,7 @@ import app.cleared.fixture.SampleData
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -39,6 +40,91 @@ class DiscoverMapperTest {
         val titles = state().listings.filter { it.isPriced }.map { it.title }
         assertEquals("Landing page copy, fixed price", titles.first())
         assertEquals("Bounding box batch, 900 frames", titles.last())
+    }
+
+    // ── Per-platform hour defaults ──────────────────────────────────────────────────────────────
+
+    /**
+     * A listing on a platform with history is priced from that history, not left blank.
+     *
+     * Meridian Transcribe is the only listing with neither stated hours nor any history, so it is
+     * the only one that stays unpriced. Everything else the user has worked on gets an estimate.
+     */
+    @Test
+    fun `a listing with no stated hours is estimated from the platform's history`() {
+        val bare = scan.listings.map {
+            if (it.id == 3L) it.copy(estHours = null, assessmentHours = null) else it
+        }
+        val ui = DiscoverMapper.detail(
+            listingId = 3,
+            scan = scan.copy(listings = bare),
+            platforms = SampleData.platforms,
+            routes = SampleData.routes,
+            states = SampleData.states,
+            rates = SampleData.RATES
+        )
+
+        assertTrue("Halo Data has history, so the listing is priced", ui.isPriced)
+        assertTrue(ui.isEstimated)
+        assertTrue(ui.suggestedHours > 0.0)
+        assertTrue(ui.comparison, ui.comparison.contains("estimated from your history here"))
+
+        val hours = ui.breakdown.first { it.label == "Divided by hours" }
+        assertTrue(hours.subLabel!!, hours.subLabel!!.startsWith("estimated from "))
+        assertEquals("Projected effective, estimated", ui.breakdown.last().label)
+    }
+
+    /**
+     * The trap this design has to avoid.
+     *
+     * Estimating hours as `netKes / effectiveRate` would make the projected rate come back as the
+     * platform's historical rate for *every* listing on it — a figure that cannot tell a good job
+     * from a bad one. Hours are estimated from stated pay instead, and the assessment is held
+     * separate as a fixed cost, so two listings of different sizes on the same platform must
+     * project different rates.
+     */
+    @Test
+    fun `two listings on one platform do not collapse to the same estimated rate`() {
+        val small = scan.listings.first { it.id == 3L }
+            .copy(id = 90, statedPayMinor = 6_000, estHours = null, assessmentHours = null)
+        val large = small.copy(id = 91, statedPayMinor = 120_000)
+
+        val ui = DiscoverMapper.build(
+            scan = scan.copy(listings = listOf(small, large)),
+            platforms = SampleData.platforms,
+            routes = SampleData.routes,
+            states = SampleData.states,
+            rates = SampleData.RATES,
+            filter = DiscoverFilter.All,
+            now = SampleData.NOW
+        )
+
+        val rates = ui.listings.map { it.rate }
+        assertEquals(2, rates.size)
+        assertTrue("both are priced from history", ui.listings.all { it.isPriced && it.isEstimated })
+        assertNotEquals(
+            "a fixed assessment must make the small job worse per hour",
+            rates[0],
+            rates[1]
+        )
+    }
+
+    /** No history, no estimate. The honesty fix survives the default. */
+    @Test
+    fun `a platform with no history still leaves its listing unpriced`() {
+        val row = state().listings.single { !it.isPriced }
+        assertEquals("Audio QA, 12 h per week", row.title)
+        assertFalse(row.isEstimated)
+    }
+
+    /** A stated or user-supplied figure always beats the estimate. */
+    @Test
+    fun `stated hours are preferred over the platform default`() {
+        val page = detail(3)
+        assertTrue(page.isPriced)
+        assertFalse("the listing states its own hours", page.isEstimated)
+        assertEquals("26 h of work + 2 h unpaid assessment", page.breakdown
+            .first { it.label == "Divided by hours" }.subLabel)
     }
 
     /**
@@ -225,7 +311,7 @@ class DiscoverMapperTest {
     @Test
     fun `the filters narrow the list`() {
         val all = state().listings.size
-        assertEquals(5, all)
+        assertEquals(6, all)
 
         assertTrue(state(DiscoverFilter.AboveMedian).listings.size < all)
         assertTrue(state(DiscoverFilter.NoAssessment).listings.all { !it.hasAssessment })
@@ -236,7 +322,7 @@ class DiscoverMapperTest {
     fun `the scan caption names the sources and how many are shown`() {
         val caption = state(DiscoverFilter.Writing).scanCaption
         assertTrue(caption, caption.startsWith("Scanned 6 platform boards and 2 community feeds"))
-        assertTrue(caption, caption.endsWith("2 of 5 shown"))
+        assertTrue(caption, caption.endsWith("2 of 6 shown"))
     }
 
     @Test
@@ -253,3 +339,4 @@ class DiscoverMapperTest {
         assertNull(missing.platformId)
     }
 }
+

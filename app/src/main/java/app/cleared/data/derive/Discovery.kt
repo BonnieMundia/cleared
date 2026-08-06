@@ -21,9 +21,24 @@ import java.math.MathContext
  *
  * Discovery reads public boards only. It never signs in as the user and never applies on his behalf.
  */
+/** Where a listing's hours came from, which decides how much the rate above them can be trusted. */
+enum class HoursSource {
+    /** The listing itself stated them. Rare. */
+    Stated,
+
+    /** The user said. The best number available. */
+    User,
+
+    /** Estimated from what work on this platform has taken before. */
+    PlatformHistory,
+
+    /** Nobody knows and there is no history to guess from. */
+    Unknown
+}
+
 /**
- * What a listing would pay. [projectedKesPerHour] is null until the hours are known — see
- * [Discovery.project].
+ * What a listing would pay. [projectedKesPerHour] is null only when the hours are unknown *and*
+ * there is no history to estimate them from — see [Discovery.project].
  */
 data class ListingProjection(
     val listing: ListingEntity,
@@ -31,9 +46,15 @@ data class ListingProjection(
     val netKes: Long,
     val projectedKesPerHour: Long?,
     val riskAdjustedKesPerHour: Long?,
-    val totalHours: Double?
+    val totalHours: Double?,
+    val hoursSource: HoursSource = HoursSource.Unknown,
+    /** Records the estimate was built from, when [hoursSource] is [HoursSource.PlatformHistory]. */
+    val hoursSampleCount: Int = 0
 ) {
     val isPriced: Boolean get() = projectedKesPerHour != null
+
+    /** True when the rate rests on an estimate rather than on a stated or confirmed hour count. */
+    val isEstimated: Boolean get() = hoursSource == HoursSource.PlatformHistory
 }
 
 /** One line of the "How that number is built" table on frame `3b`. */
@@ -106,17 +127,14 @@ object Discovery {
             return rows
         }
 
-        val assessment = listing.assessmentHours ?: 0.0
         rows += ProjectionLine(
             label = "Divided by hours",
             value = formatHours(hours),
-            subLabel = if (assessment > 0) {
-                "${formatHours(listing.estHours ?: 0.0)} of work + " +
-                    "${formatHours(assessment)} unpaid assessment"
-            } else null
+            subLabel = hoursProvenance(listing, projection, formatHours)
         )
         rows += ProjectionLine(
-            label = "Projected effective",
+            label = if (projection.isEstimated) "Projected effective, estimated"
+            else "Projected effective",
             value = projection.projectedKesPerHour?.let(formatKes) ?: "—",
             isTotal = true
         )
@@ -124,12 +142,42 @@ object Discovery {
         return rows
     }
 
+    /**
+     * Says where the divisor came from. An estimate and a stated figure produce the same number and
+     * deserve very different confidence, so the line that carries them says which it is.
+     */
+    private fun hoursProvenance(
+        listing: ListingEntity,
+        projection: ListingProjection,
+        formatHours: (Double) -> String
+    ): String? {
+        val assessment = listing.assessmentHours
+        return when (projection.hoursSource) {
+            HoursSource.PlatformHistory ->
+                "estimated from ${projection.hoursSampleCount} records on this platform"
+
+            HoursSource.User, HoursSource.Stated ->
+                if (assessment != null && assessment > 0) {
+                    "${formatHours(listing.estHours ?: 0.0)} of work + " +
+                        "${formatHours(assessment)} unpaid assessment"
+                } else null
+
+            HoursSource.Unknown -> null
+        }
+    }
+
+    /**
+     * @param stats the platform's own statistics, used to estimate hours the listing does not state
+     *        and the user has not supplied. Null, or a platform with no history, leaves the listing
+     *        unpriced rather than guessed at.
+     */
     fun project(
         listing: ListingEntity,
         platform: PlatformEntity?,
         usualRoute: WithdrawalRouteEntity?,
         rates: Map<Currency, BigDecimal>,
-        approvalRate: Double?
+        approvalRate: Double?,
+        stats: PlatformStats? = null
     ): ListingProjection {
         val midRate = Pipeline.rateFor(listing.currency, rates)
         val commission = platform?.commissionPct ?: 0.0
@@ -145,18 +193,19 @@ object Discovery {
             .multiply(midRate)
             .subtract(flatFeeKes)
 
-        // No hours, no rate. Dividing by an assumed hour count would put a confident figure on the
-        // card — and because an unknown would floor to zero, the listing would sort last and read as
-        // the worst work available rather than as the unpriced one. Withholding it is the honest
-        // answer and the one that does not lose the user a good job.
-        val hours = listing.totalHours
+        val (hours, source, sample) = hoursFor(listing, stats)
+
+        // Unknown hours and no history to estimate from: no rate. Dividing by an assumed count
+        // would put a confident figure on the card, and an unknown flooring to zero would make the
+        // listing read as the worst work available rather than as the unpriced one.
         if (hours == null || hours <= 0.0) {
             return ListingProjection(
                 listing = listing,
                 netKes = Money.toKes(net),
                 projectedKesPerHour = null,
                 riskAdjustedKesPerHour = null,
-                totalHours = null
+                totalHours = null,
+                hoursSource = HoursSource.Unknown
             )
         }
 
@@ -169,7 +218,37 @@ object Discovery {
             riskAdjustedKesPerHour = approvalRate?.let {
                 Money.toKes(perHour.multiply(BigDecimal.valueOf(it)))
             },
-            totalHours = hours
+            totalHours = hours,
+            hoursSource = source,
+            hoursSampleCount = sample
         )
+    }
+
+    /**
+     * The hours to divide by, and where they came from.
+     *
+     * Preference order is stated, then the user's own estimate, then the platform's history. The
+     * work component scales with what the listing pays; the assessment does not, because it is a
+     * fixed toll for turning up.
+     */
+    private fun hoursFor(
+        listing: ListingEntity,
+        stats: PlatformStats?
+    ): Triple<Double?, HoursSource, Int> {
+        listing.totalHours?.let { stated ->
+            if (stated > 0.0) {
+                val source = if (listing.hoursEstimatedByUser) HoursSource.User else HoursSource.Stated
+                return Triple(stated, source, 0)
+            }
+        }
+
+        val perUnit = stats?.hoursPerPayUnit ?: return Triple(null, HoursSource.Unknown, 0)
+        val pay = Money.fromMinor(listing.statedPayMinor).toDouble()
+        val work = pay * perUnit
+        val assessment = listing.assessmentHours ?: stats.typicalAssessmentHours
+
+        val total = work + assessment
+        if (total <= 0.0) return Triple(null, HoursSource.Unknown, 0)
+        return Triple(total, HoursSource.PlatformHistory, stats.hoursSampleCount)
     }
 }

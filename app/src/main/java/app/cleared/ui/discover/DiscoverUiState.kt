@@ -41,7 +41,9 @@ data class ListingRowUi(
     val adjusted: String,
     val warning: String?,
     /** False when nobody has said how long this would take, so there is no rate to show. */
-    val isPriced: Boolean = true
+    val isPriced: Boolean = true,
+    /** True when the rate rests on the platform's history rather than on a known hour count. */
+    val isEstimated: Boolean = false
 )
 
 data class DiscoverUiState(
@@ -61,6 +63,9 @@ data class ListingDetailUiState(
     val comparison: String = "",
     val isBelowMedian: Boolean = false,
     val isPriced: Boolean = false,
+    val isEstimated: Boolean = false,
+    /** What the platform's history suggests, pre-filling the stepper. */
+    val suggestedHours: Double = 0.0,
     /** The hours the user has set, or zero while unestimated. */
     val estHours: Double = 0.0,
     val assessmentHours: Double = 0.0,
@@ -171,8 +176,16 @@ object DiscoverMapper {
             subLine = "${listing.platformName} · ${listing.kind} · " +
                 "${listing.sourceLabel} · ${relative(listing.seenAt, Instant.now())}",
             rate = projection.projectedKesPerHour?.let { MoneyFormat.kes(it) } ?: "Not priced yet",
-            comparison = projection.projectedKesPerHour?.let { comparison(it, median) }
-                ?: "Set the hours below and this prices itself.",
+            comparison = when {
+                projection.projectedKesPerHour == null ->
+                    "Set the hours below and this prices itself."
+                projection.isEstimated ->
+                    "${comparison(projection.projectedKesPerHour!!, median)} · " +
+                        "estimated from your history here, until you say otherwise"
+                else -> comparison(projection.projectedKesPerHour!!, median)
+            },
+            isEstimated = projection.isEstimated,
+            suggestedHours = if (projection.isEstimated) projection.totalHours ?: 0.0 else 0.0,
             isBelowMedian = projection.projectedKesPerHour?.let { it < median } == true,
             isPriced = projection.isPriced,
             estHours = listing.estHours ?: 0.0,
@@ -238,7 +251,8 @@ object DiscoverMapper {
             platform = platform,
             usualRoute = usualRoute(platform, routes),
             rates = rates,
-            approvalRate = stat?.approvalRate
+            approvalRate = stat?.approvalRate,
+            stats = stat
         )
     }
 
@@ -262,10 +276,20 @@ object DiscoverMapper {
             subLine = "${listing.platformName} · ${listing.kind} · ${listing.sourceLabel} · " +
                 relative(listing.seenAt, now),
             rate = rate?.let { MoneyFormat.kes(it) } ?: "Not priced yet",
-            vsMedian = if (rate == null) "tap to estimate the hours" else comparison(rate, median),
+            vsMedian = when {
+                rate == null -> "tap to estimate the hours"
+                projection.isEstimated -> "${comparison(rate, median)} · estimated"
+                else -> comparison(rate, median)
+            },
+            isEstimated = projection.isEstimated,
             isBelowMedian = below,
             pays = MoneyFormat.formatMinor(listing.currency, listing.statedPayMinor),
             hours = when {
+                // Estimated from history: say so and say how long, so the figure above is read for
+                // what it is rather than as something the board promised.
+                projection.isEstimated ->
+                    "${MoneyFormat.hours(projection.totalHours ?: 0.0)} estimated from your " +
+                        "${projection.hoursSampleCount} records here"
                 listing.estHours == null -> "not stated — you decide"
                 assessment > 0 ->
                     "${MoneyFormat.hours(listing.estHours!!)} est + " +

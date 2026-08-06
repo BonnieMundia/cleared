@@ -251,7 +251,11 @@ private fun HoursEstimate(
     state: ListingDetailUiState,
     onEstimateHours: (Double, Double) -> Unit
 ) {
-    var work by remember(state.listingId, state.estHours) { mutableStateOf(state.estHours) }
+    // Pre-filled from the platform's own history, so the common case is confirming a number rather
+    // than inventing one from a standing start.
+    var work by remember(state.listingId, state.estHours, state.suggestedHours) {
+        mutableStateOf(if (state.estHours > 0.0) state.estHours else state.suggestedHours)
+    }
     var assessment by remember(state.listingId, state.assessmentHours) {
         mutableStateOf(state.assessmentHours)
     }
@@ -276,8 +280,13 @@ private fun HoursEstimate(
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            text = "No board publishes this. It is your judgement, and it is what every figure " +
-                "above divides by.",
+            text = if (state.isEstimated) {
+                "Started from what work on this platform has taken you before. Change it and the " +
+                    "figures above follow."
+            } else {
+                "No board publishes this. It is your judgement, and it is what every figure " +
+                    "above divides by."
+            },
             style = Cleared.type.caption,
             color = Cleared.tones.tertiary2
         )
