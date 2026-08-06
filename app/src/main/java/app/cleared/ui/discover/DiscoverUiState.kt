@@ -39,7 +39,9 @@ data class ListingRowUi(
     val hasAssessment: Boolean,
     val then: String,
     val adjusted: String,
-    val warning: String?
+    val warning: String?,
+    /** False when nobody has said how long this would take, so there is no rate to show. */
+    val isPriced: Boolean = true
 )
 
 data class DiscoverUiState(
@@ -52,11 +54,17 @@ data class DiscoverUiState(
 )
 
 data class ListingDetailUiState(
+    val listingId: Long = 0,
     val title: String = "",
     val subLine: String = "",
     val rate: String = "",
     val comparison: String = "",
     val isBelowMedian: Boolean = false,
+    val isPriced: Boolean = false,
+    /** The hours the user has set, or zero while unestimated. */
+    val estHours: Double = 0.0,
+    val assessmentHours: Double = 0.0,
+    val hoursEstimatedByUser: Boolean = false,
     val breakdown: List<ProjectionLine> = emptyList(),
     val riskNote: String = "",
     val platformName: String = "",
@@ -93,27 +101,34 @@ object DiscoverMapper {
         val stats = PlatformStatistics.all(platforms, states)
         val median = PlatformStatistics.medianRate(stats)
 
+        // Priced listings rank by rate; unpriced ones sort after them rather than below the worst
+        // job on the board, because "we do not know" is not the same as "nearly nothing".
         val projected = scan.listings
             .map { it to project(it, platforms, routes, stats, rates) }
-            .sortedByDescending { it.second.projectedKesPerHour }
+            .sortedWith(
+                compareByDescending<Pair<ListingEntity, ListingProjection>> { it.second.isPriced }
+                    .thenByDescending { it.second.projectedKesPerHour ?: Long.MIN_VALUE }
+            )
 
         val visible = projected.filter { (listing, projection) ->
             when (filter) {
                 DiscoverFilter.All -> true
-                DiscoverFilter.AboveMedian -> projection.projectedKesPerHour > median
-                DiscoverFilter.NoAssessment -> listing.assessmentHours == 0.0
+                // An unpriced listing cannot be claimed to beat the median.
+                DiscoverFilter.AboveMedian ->
+                    projection.projectedKesPerHour?.let { it > median } == true
+                DiscoverFilter.NoAssessment -> (listing.assessmentHours ?: 0.0) == 0.0
                 DiscoverFilter.Writing -> listing.kind.equals("Writing", ignoreCase = true)
             }
         }
 
-        val best = projected.firstOrNull()?.second
-        val multiple = if (median > 0 && best != null) {
-            BigDecimal.valueOf(best.projectedKesPerHour)
+        val best = projected.firstOrNull { it.second.isPriced }?.second
+        val multiple = if (median > 0 && best?.projectedKesPerHour != null) {
+            BigDecimal.valueOf(best.projectedKesPerHour!!)
                 .divide(BigDecimal.valueOf(median), MathContext.DECIMAL64)
         } else null
 
         return DiscoverUiState(
-            bestRate = best?.let { MoneyFormat.kes(it.projectedKesPerHour) } ?: "—",
+            bestRate = best?.projectedKesPerHour?.let { MoneyFormat.kes(it) } ?: "—",
             bestCaption = multiple?.let {
                 val times = it.setScale(1, java.math.RoundingMode.HALF_UP).toPlainString()
                 "$times× your median of ${MoneyFormat.kes(median)}/h"
@@ -151,12 +166,18 @@ object DiscoverMapper {
         }
 
         return ListingDetailUiState(
+            listingId = listing.id,
             title = listing.title,
             subLine = "${listing.platformName} · ${listing.kind} · " +
                 "${listing.sourceLabel} · ${relative(listing.seenAt, Instant.now())}",
-            rate = MoneyFormat.kes(projection.projectedKesPerHour),
-            comparison = comparison(projection.projectedKesPerHour, median),
-            isBelowMedian = projection.projectedKesPerHour < median,
+            rate = projection.projectedKesPerHour?.let { MoneyFormat.kes(it) } ?: "Not priced yet",
+            comparison = projection.projectedKesPerHour?.let { comparison(it, median) }
+                ?: "Set the hours below and this prices itself.",
+            isBelowMedian = projection.projectedKesPerHour?.let { it < median } == true,
+            isPriced = projection.isPriced,
+            estHours = listing.estHours ?: 0.0,
+            assessmentHours = listing.assessmentHours ?: 0.0,
+            hoursEstimatedByUser = listing.hoursEstimatedByUser,
             breakdown = Discovery.breakdown(
                 listing = listing,
                 platform = platform,
@@ -231,24 +252,28 @@ object DiscoverMapper {
     ): ListingRowUi {
         val platform = platforms.firstOrNull { it.name == listing.platformName }
         val stat = stats.firstOrNull { it.platform.id == platform?.id }
-        val below = projection.projectedKesPerHour < median
+        val rate = projection.projectedKesPerHour
+        val below = rate != null && rate < median
+        val assessment = listing.assessmentHours ?: 0.0
 
         return ListingRowUi(
             id = listing.id,
             title = listing.title,
             subLine = "${listing.platformName} · ${listing.kind} · ${listing.sourceLabel} · " +
                 relative(listing.seenAt, now),
-            rate = MoneyFormat.kes(projection.projectedKesPerHour),
-            vsMedian = comparison(projection.projectedKesPerHour, median),
+            rate = rate?.let { MoneyFormat.kes(it) } ?: "Not priced yet",
+            vsMedian = if (rate == null) "tap to estimate the hours" else comparison(rate, median),
             isBelowMedian = below,
             pays = MoneyFormat.formatMinor(listing.currency, listing.statedPayMinor),
-            hours = if (listing.assessmentHours > 0) {
-                "${MoneyFormat.hours(listing.estHours)} est + " +
-                    "${MoneyFormat.hours(listing.assessmentHours)} unpaid assessment"
-            } else {
-                "${MoneyFormat.hours(listing.estHours)} est"
+            hours = when {
+                listing.estHours == null -> "not stated — you decide"
+                assessment > 0 ->
+                    "${MoneyFormat.hours(listing.estHours!!)} est + " +
+                        "${MoneyFormat.hours(assessment)} unpaid assessment"
+                else -> "${MoneyFormat.hours(listing.estHours!!)} est"
             },
-            hasAssessment = listing.assessmentHours > 0,
+            hasAssessment = assessment > 0,
+            isPriced = projection.isPriced,
             then = stat?.let { s ->
                 s.approvalPct?.let { "$it% approved" } ?: "no approval history"
             } ?: "no history with this platform",
@@ -268,6 +293,10 @@ object DiscoverMapper {
         stat: PlatformStats?,
         projection: ListingProjection
     ): String {
+        if (!projection.isPriced) {
+            return "No board states how long a job will take. Set the hours and this prices " +
+                "itself, risk-adjusted by ${listing.platformName}'s own approval rate."
+        }
         val adjusted = projection.riskAdjustedKesPerHour
             ?: return "You have no approval history with ${listing.platformName}, so there is " +
                 "nothing to risk-adjust this against."

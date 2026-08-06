@@ -25,6 +25,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.cleared.ui.components.ProspectChip
+import app.cleared.ui.format.MoneyFormat
 import app.cleared.ui.theme.Cleared
 import app.cleared.ui.theme.ClearedShape
 import app.cleared.ui.theme.Dimens
@@ -54,7 +59,8 @@ fun ListingDetailScreen(
     onBack: () -> Unit = {},
     onTrackProspect: () -> Unit = {},
     onOpenPlatform: () -> Unit = {},
-    onOpenSettleTime: (Long) -> Unit = {}
+    onOpenSettleTime: (Long) -> Unit = {},
+    onEstimateHours: (Double, Double) -> Unit = { _, _ -> }
 ) {
     Scaffold(
         modifier = modifier,
@@ -107,8 +113,11 @@ fun ListingDetailScreen(
                 else Cleared.semantics.onMoneyContainer
             )
 
-            SectionLabel("How that number is built")
+            SectionLabel(if (state.isPriced) "How that number is built" else "What is known so far")
             Breakdown(state)
+
+            SectionLabel(if (state.hoursEstimatedByUser) "Your estimate" else "How long will it take?")
+            HoursEstimate(state, onEstimateHours)
 
             if (state.riskNote.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
@@ -227,6 +236,92 @@ private fun Breakdown(state: ListingDetailUiState) {
                 )
             }
         }
+    }
+}
+
+/**
+ * The one input on this screen, and the reason it exists.
+ *
+ * A board post says what it pays, never how long it takes. Until somebody says, the projection has
+ * no denominator — so this is where the user supplies the number the source could not, split into
+ * the work and the unpaid assessment because only the first is what they are being paid for.
+ */
+@Composable
+private fun HoursEstimate(
+    state: ListingDetailUiState,
+    onEstimateHours: (Double, Double) -> Unit
+) {
+    var work by remember(state.listingId, state.estHours) { mutableStateOf(state.estHours) }
+    var assessment by remember(state.listingId, state.assessmentHours) {
+        mutableStateOf(state.assessmentHours)
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(Dimens.hairline, Cleared.tones.outlineCard, ClearedShape.card)
+            .padding(Dimens.cardPadding)
+    ) {
+        HoursRow(
+            label = "Work",
+            hours = work,
+            onChange = { work = it; onEstimateHours(it, assessment) }
+        )
+        Spacer(Modifier.height(10.dp))
+        HoursRow(
+            label = "Unpaid assessment",
+            hours = assessment,
+            amber = assessment > 0,
+            onChange = { assessment = it; onEstimateHours(work, it) }
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "No board publishes this. It is your judgement, and it is what every figure " +
+                "above divides by.",
+            style = Cleared.type.caption,
+            color = Cleared.tones.tertiary2
+        )
+    }
+}
+
+@Composable
+private fun HoursRow(
+    label: String,
+    hours: Double,
+    amber: Boolean = false,
+    onChange: (Double) -> Unit
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = Cleared.type.tableRow,
+            color = if (amber) Cleared.semantics.overdue else Cleared.tones.onSurfaceVariant2,
+            modifier = Modifier.weight(1f)
+        )
+        StepButton("−") { onChange((hours - 0.5).coerceAtLeast(0.0)) }
+        Text(
+            text = MoneyFormat.hours(hours),
+            style = Cleared.type.rowFigure,
+            color = if (amber) Cleared.semantics.overdue else MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.width(72.dp)
+        )
+        StepButton("+") { onChange(hours + 0.5) }
+    }
+}
+
+@Composable
+private fun StepButton(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .border(Dimens.hairline, Cleared.tones.outlineButton, ClearedShape.smallTile)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, style = Cleared.type.cardTitle, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 

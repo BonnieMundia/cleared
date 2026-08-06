@@ -258,20 +258,50 @@ data class TaxSettingsEntity(
     val setAsideLastMoved: LocalDate? = null
 )
 
+/**
+ * A listing found by a scan.
+ *
+ * [estHours] and [assessmentHours] are **nullable, and usually null**. No public job board publishes
+ * "this will take you 26 hours and there is a 2-hour unpaid calibration set" — those are judgement
+ * calls made by reading the post. A source may supply them; most cannot, and then the user does.
+ *
+ * Until they are known there is no projected rate, because dividing by an assumed hour count
+ * produces a confident number that is wrong.
+ */
 @Entity(tableName = "listing")
 data class ListingEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @PrimaryKey val id: Long,
     val platformName: String,
     val title: String,
     val kind: String,
     val statedPayMinor: Long,
     val currency: Currency,
-    val estHours: Double,
-    val assessmentHours: Double,
+    val estHours: Double? = null,
+    val assessmentHours: Double? = null,
     val sourceLabel: String,
     val sourceUrl: String? = null,
     val seenAt: Instant,
-    val note: String? = null
+    val note: String? = null,
+    /** True once the user has supplied the hours a source could not. */
+    val hoursEstimatedByUser: Boolean = false
+) {
+    /** Total hours, or null while the estimate is missing. */
+    val totalHours: Double?
+        get() = estHours?.let { it + (assessmentHours ?: 0.0) }
+}
+
+/**
+ * The last scan, so Discover can show it with a staleness line rather than an empty screen when
+ * there is no network. One row, id 0.
+ */
+@Entity(tableName = "discovery_scan")
+data class DiscoveryScanEntity(
+    @PrimaryKey val id: Long = 0,
+    val scannedAt: Instant,
+    val boardCount: Int,
+    val feedCount: Int,
+    /** Null when the last attempt succeeded; the reason it did not, otherwise. */
+    val lastError: String? = null
 )
 
 /**

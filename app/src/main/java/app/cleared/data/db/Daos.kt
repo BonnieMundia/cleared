@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import app.cleared.data.db.entity.ConversionSnapshotEntity
+import app.cleared.data.db.entity.DiscoveryScanEntity
 import app.cleared.data.db.entity.EarningRecordEntity
 import app.cleared.data.db.entity.FeeLineEntity
 import app.cleared.data.db.entity.FxRateEntity
@@ -169,5 +170,48 @@ interface TaxSettingsDao {
 @Dao
 interface ListingDao {
     @Query("SELECT * FROM listing ORDER BY seenAt DESC") fun observeAll(): Flow<List<ListingEntity>>
+
+    @Query("SELECT * FROM listing WHERE id = :id") suspend fun byId(id: Long): ListingEntity?
+
     @Upsert suspend fun upsertAll(listings: List<ListingEntity>)
+
+    @Update suspend fun update(listing: ListingEntity)
+
+    /**
+     * Replaces a scan's results while keeping any hours the user typed.
+     *
+     * A rescan must not wipe an estimate: the user's judgement about how long something takes is
+     * the scarcest data in this feature, and no source will ever supply it.
+     */
+    @Transaction
+    suspend fun replaceScan(listings: List<ListingEntity>) {
+        val estimated = observeEstimated()
+        val merged = listings.map { fresh ->
+            val existing = estimated.firstOrNull { it.id == fresh.id }
+            if (existing != null && existing.hoursEstimatedByUser) {
+                fresh.copy(
+                    estHours = existing.estHours,
+                    assessmentHours = existing.assessmentHours,
+                    hoursEstimatedByUser = true
+                )
+            } else {
+                fresh
+            }
+        }
+        deleteAllExcept(merged.map { it.id })
+        upsertAll(merged)
+    }
+
+    @Query("SELECT * FROM listing WHERE hoursEstimatedByUser = 1")
+    suspend fun observeEstimated(): List<ListingEntity>
+
+    @Query("DELETE FROM listing WHERE id NOT IN (:keep)")
+    suspend fun deleteAllExcept(keep: List<Long>)
+}
+
+@Dao
+interface DiscoveryScanDao {
+    @Query("SELECT * FROM discovery_scan WHERE id = 0") fun observe(): Flow<DiscoveryScanEntity?>
+    @Query("SELECT * FROM discovery_scan WHERE id = 0") suspend fun get(): DiscoveryScanEntity?
+    @Upsert suspend fun upsert(scan: DiscoveryScanEntity)
 }

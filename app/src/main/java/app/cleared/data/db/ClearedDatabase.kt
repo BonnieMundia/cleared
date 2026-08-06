@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.cleared.data.db.entity.ConversionSnapshotEntity
+import app.cleared.data.db.entity.DiscoveryScanEntity
 import app.cleared.data.db.entity.EarningRecordEntity
 import app.cleared.data.db.entity.FeeLineEntity
 import app.cleared.data.db.entity.FxRateEntity
@@ -33,9 +34,10 @@ import app.cleared.data.db.entity.WithdrawalRouteEntity
         WithdrawalRouteEntity::class,
         SyncOpEntity::class,
         TaxSettingsEntity::class,
-        ListingEntity::class
+        ListingEntity::class,
+        DiscoveryScanEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -53,6 +55,7 @@ abstract class ClearedDatabase : RoomDatabase() {
     abstract fun syncOpDao(): SyncOpDao
     abstract fun taxSettingsDao(): TaxSettingsDao
     abstract fun listingDao(): ListingDao
+    abstract fun discoveryScanDao(): DiscoveryScanDao
 
     companion object {
         private const val NAME = "cleared.db"
@@ -91,11 +94,70 @@ abstract class ClearedDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Makes a listing's hours nullable and adds the scan record.
+         *
+         * SQLite cannot relax a NOT NULL column in place, so the table is rebuilt. Nothing is lost:
+         * listings were never persisted before this version, so the copy is over an empty table in
+         * practice — but it is written properly rather than dropped, because the next person to read
+         * this migration should not learn that dropping user data is an acceptable shortcut here.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `listing_new` (
+                        `id` INTEGER NOT NULL,
+                        `platformName` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `statedPayMinor` INTEGER NOT NULL,
+                        `currency` TEXT NOT NULL,
+                        `estHours` REAL,
+                        `assessmentHours` REAL,
+                        `sourceLabel` TEXT NOT NULL,
+                        `sourceUrl` TEXT,
+                        `seenAt` INTEGER NOT NULL,
+                        `note` TEXT,
+                        `hoursEstimatedByUser` INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `listing_new`
+                        (id, platformName, title, kind, statedPayMinor, currency,
+                         estHours, assessmentHours, sourceLabel, sourceUrl, seenAt, note,
+                         hoursEstimatedByUser)
+                    SELECT id, platformName, title, kind, statedPayMinor, currency,
+                           estHours, assessmentHours, sourceLabel, sourceUrl, seenAt, note, 0
+                    FROM `listing`
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE `listing`")
+                db.execSQL("ALTER TABLE `listing_new` RENAME TO `listing`")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `discovery_scan` (
+                        `id` INTEGER NOT NULL,
+                        `scannedAt` INTEGER NOT NULL,
+                        `boardCount` INTEGER NOT NULL,
+                        `feedCount` INTEGER NOT NULL,
+                        `lastError` TEXT,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile private var instance: ClearedDatabase? = null
 
         fun get(context: Context): ClearedDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, ClearedDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 .also { instance = it }
         }

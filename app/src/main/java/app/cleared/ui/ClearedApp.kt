@@ -279,7 +279,8 @@ fun ClearedApp() {
                     state = state,
                     onBack = { navController.popBackStack() },
                     onTrackProspect = viewModel::trackAsProspect,
-                    onOpenSettleTime = { navController.navigate("settle/$it") }
+                    onOpenSettleTime = { navController.navigate("settle/$it") },
+                    onEstimateHours = viewModel::estimateHours
                 )
             }
 
@@ -384,6 +385,7 @@ private fun ScreenTitle(title: String, chrome: ScreenChrome? = null) {
         )
     }
 }
+
 
 
 

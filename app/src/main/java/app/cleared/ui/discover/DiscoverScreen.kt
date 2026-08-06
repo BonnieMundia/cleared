@@ -154,26 +154,40 @@ private fun ListingCard(listing: ListingRowUi, onClick: () -> Unit) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = listing.rate,
-                    style = Cleared.type.sectionFigure.copy(fontSize = 27.sp),
-                    color = if (listing.isBelowMedian) Cleared.semantics.onRejectContainer
-                    else MaterialTheme.colorScheme.onSurface,
+                    // An unpriced listing is not a bad one, so it takes the neutral supporting tone
+                    // rather than either the figure colour or the rejected red.
+                    style = if (listing.isPriced) {
+                        Cleared.type.sectionFigure.copy(fontSize = 27.sp)
+                    } else {
+                        Cleared.type.rowPrimary
+                    },
+                    color = when {
+                        !listing.isPriced -> Cleared.tones.onSurfaceVariant2
+                        listing.isBelowMedian -> Cleared.semantics.onRejectContainer
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
                     maxLines = 1,
                     softWrap = false
                 )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "per hour",
-                    style = Cleared.type.secondary,
-                    color = Cleared.tones.tertiary,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
+                if (listing.isPriced) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "per hour",
+                        style = Cleared.type.secondary,
+                        color = Cleared.tones.tertiary,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
             }
             Spacer(Modifier.height(3.dp))
             Text(
                 text = listing.vsMedian,
                 style = Cleared.type.rowSubFigure,
-                color = if (listing.isBelowMedian) Cleared.semantics.onRejectContainer
-                else Cleared.semantics.onMoneyContainer,
+                color = when {
+                    !listing.isPriced -> Cleared.tones.tertiary
+                    listing.isBelowMedian -> Cleared.semantics.onRejectContainer
+                    else -> Cleared.semantics.onMoneyContainer
+                },
                 textAlign = TextAlign.End,
                 maxLines = 1,
                 softWrap = false,

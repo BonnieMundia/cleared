@@ -36,9 +36,103 @@ class DiscoverMapperTest {
 
     @Test
     fun `listings are ranked by what they would actually pay`() {
-        val titles = state().listings.map { it.title }
+        val titles = state().listings.filter { it.isPriced }.map { it.title }
         assertEquals("Landing page copy, fixed price", titles.first())
         assertEquals("Bounding box batch, 900 frames", titles.last())
+    }
+
+    /**
+     * An unpriced listing sorts after every priced one, not below the worst-paying job on the board.
+     *
+     * "We do not know what this pays" is not "this pays nearly nothing", and the old code conflated
+     * them: with no hours the rate floored to zero, so a listing nobody had estimated ranked last
+     * and read as the worst work available. That is the failure mode every real source would hit,
+     * because no board publishes hours.
+     */
+    @Test
+    fun `an unpriced listing sorts after the priced ones, not below the worst`() {
+        val rows = state().listings
+        val unpriced = rows.filter { !it.isPriced }
+        val priced = rows.filter { it.isPriced }
+
+        assertEquals(1, unpriced.size)
+        assertEquals("Audio QA, 12 h per week", unpriced.single().title)
+        assertEquals(rows.takeLast(unpriced.size), unpriced)
+        assertTrue("priced listings all come first", rows.take(priced.size).all { it.isPriced })
+    }
+
+    @Test
+    fun `an unpriced listing shows no rate and says why`() {
+        val row = state().listings.single { !it.isPriced }
+        assertEquals("Not priced yet", row.rate)
+        assertEquals("tap to estimate the hours", row.vsMedian)
+        assertEquals("not stated — you decide", row.hours)
+        assertFalse("unpriced is not below median; it is unknown", row.isBelowMedian)
+    }
+
+    /** A listing with no rate cannot be claimed to beat the median. */
+    @Test
+    fun `the above-median filter excludes unpriced listings`() {
+        assertTrue(state(DiscoverFilter.AboveMedian).listings.all { it.isPriced })
+    }
+
+    /** The header quotes the best *priced* listing; an unpriced one cannot be the best. */
+    @Test
+    fun `the best-available figure ignores unpriced listings`() {
+        val ui = state()
+        assertEquals("KES 3,140", ui.bestRate)
+    }
+
+    /**
+     * The breakdown stops where the arithmetic does. Everything above the division is still true
+     * and still shown; only the last two lines depend on an estimate nobody has made.
+     */
+    @Test
+    fun `an unpriced breakdown stops at what lands`() {
+        val page = detail(4)
+        assertFalse(page.isPriced)
+        assertEquals("Not priced yet", page.rate)
+
+        val labels = page.breakdown.map { it.label }
+        assertTrue(labels.contains("Stated pay"))
+        assertTrue(labels.contains("Lands as"))
+
+        val hours = page.breakdown.last()
+        assertEquals("Divided by hours", hours.label)
+        assertEquals("—", hours.value)
+        assertEquals("no estimate yet", hours.subLabel)
+        assertFalse("there is no projected effective line", labels.contains("Projected effective"))
+    }
+
+    @Test
+    fun `an unpriced listing explains what it needs rather than apologising`() {
+        assertTrue(detail(4).riskNote.startsWith("No board states how long a job will take"))
+    }
+
+    /** Supplying the hours prices it, using the same arithmetic as a listing that came with them. */
+    @Test
+    fun `estimating the hours prices the listing`() {
+        val estimated = scan.listings.map {
+            if (it.id == 4L) it.copy(estHours = 24.0, assessmentHours = 5.0, hoursEstimatedByUser = true)
+            else it
+        }
+        val ui = DiscoverMapper.detail(
+            listingId = 4,
+            scan = scan.copy(listings = estimated),
+            platforms = SampleData.platforms,
+            routes = SampleData.routes,
+            states = SampleData.states,
+            rates = SampleData.RATES
+        )
+
+        assertTrue(ui.isPriced)
+        assertTrue(ui.rate.startsWith("KES "))
+        assertEquals(29.0, ui.estHours + ui.assessmentHours, 1e-9)
+
+        val hours = ui.breakdown.first { it.label == "Divided by hours" }
+        assertEquals("29 h", hours.value)
+        assertEquals("24 h of work + 5 h unpaid assessment", hours.subLabel)
+        assertEquals("Projected effective", ui.breakdown.last().label)
     }
 
     /**
@@ -101,6 +195,8 @@ class DiscoverMapperTest {
     @Test
     fun `a platform with no history has no risk adjustment`() {
         val meridian = state().listings.first { it.title.startsWith("Audio QA") }
+        // Two separate unknowns, and the card must not conflate them: nobody has estimated the
+        // hours, *and* there is no history with this platform to adjust against.
         assertEquals("no approval history", meridian.adjusted)
         assertEquals("no history with this platform", meridian.then)
         assertTrue(detail(4).platformStatsNote.startsWith("You have never worked"))

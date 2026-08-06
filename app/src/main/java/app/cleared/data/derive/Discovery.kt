@@ -21,13 +21,20 @@ import java.math.MathContext
  *
  * Discovery reads public boards only. It never signs in as the user and never applies on his behalf.
  */
+/**
+ * What a listing would pay. [projectedKesPerHour] is null until the hours are known — see
+ * [Discovery.project].
+ */
 data class ListingProjection(
     val listing: ListingEntity,
+    /** What it lands as in KES. Known even without hours, because it does not divide by them. */
     val netKes: Long,
-    val projectedKesPerHour: Long,
+    val projectedKesPerHour: Long?,
     val riskAdjustedKesPerHour: Long?,
-    val totalHours: Double
-)
+    val totalHours: Double?
+) {
+    val isPriced: Boolean get() = projectedKesPerHour != null
+}
 
 /** One line of the "How that number is built" table on frame `3b`. */
 data class ProjectionLine(
@@ -86,17 +93,31 @@ object Discovery {
         }
 
         rows += ProjectionLine("Lands as", formatKes(projection.netKes))
+
+        // Without hours the table stops here and says so, rather than showing a division it cannot
+        // do. The lines above are all still true — only the last two depend on the estimate.
+        val hours = projection.totalHours
+        if (hours == null) {
+            rows += ProjectionLine(
+                label = "Divided by hours",
+                value = "—",
+                subLabel = "no estimate yet"
+            )
+            return rows
+        }
+
+        val assessment = listing.assessmentHours ?: 0.0
         rows += ProjectionLine(
             label = "Divided by hours",
-            value = formatHours(projection.totalHours),
-            subLabel = if (listing.assessmentHours > 0) {
-                "${formatHours(listing.estHours)} of work + " +
-                    "${formatHours(listing.assessmentHours)} unpaid assessment"
+            value = formatHours(hours),
+            subLabel = if (assessment > 0) {
+                "${formatHours(listing.estHours ?: 0.0)} of work + " +
+                    "${formatHours(assessment)} unpaid assessment"
             } else null
         )
         rows += ProjectionLine(
             label = "Projected effective",
-            value = formatKes(projection.projectedKesPerHour),
+            value = projection.projectedKesPerHour?.let(formatKes) ?: "—",
             isTotal = true
         )
 
@@ -124,9 +145,22 @@ object Discovery {
             .multiply(midRate)
             .subtract(flatFeeKes)
 
-        val hours = listing.estHours + listing.assessmentHours
-        val perHour = if (hours == 0.0) BigDecimal.ZERO else
-            net.divide(BigDecimal.valueOf(hours), MathContext.DECIMAL64)
+        // No hours, no rate. Dividing by an assumed hour count would put a confident figure on the
+        // card — and because an unknown would floor to zero, the listing would sort last and read as
+        // the worst work available rather than as the unpriced one. Withholding it is the honest
+        // answer and the one that does not lose the user a good job.
+        val hours = listing.totalHours
+        if (hours == null || hours <= 0.0) {
+            return ListingProjection(
+                listing = listing,
+                netKes = Money.toKes(net),
+                projectedKesPerHour = null,
+                riskAdjustedKesPerHour = null,
+                totalHours = null
+            )
+        }
+
+        val perHour = net.divide(BigDecimal.valueOf(hours), MathContext.DECIMAL64)
 
         return ListingProjection(
             listing = listing,

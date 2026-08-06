@@ -27,6 +27,10 @@ data class ScanResult(
  * way anything is ever submitted.
  */
 interface DiscoverySource {
+    /**
+     * Reads the sources. May throw — a board being down is normal, and Discover's answer to that is
+     * to keep showing the last successful scan with a staleness line rather than an empty screen.
+     */
     suspend fun scan(): ScanResult
 }
 
@@ -84,6 +88,8 @@ class FixtureDiscoverySource(
                     note = "Language pair pays a premium over your usual queue here. 2 h " +
                         "calibration set is unpaid."
                 ),
+                // No hours. This is what a real board post looks like: a title, a rate, and prose.
+                // It exercises the unpriced path, which every real source will land in.
                 listing(
                     id = 4,
                     platform = "Meridian Transcribe",
@@ -91,8 +97,8 @@ class FixtureDiscoverySource(
                     kind = "AI training",
                     pay = "210.00",
                     currency = Currency.USD,
-                    estHours = 24.0,
-                    assessmentHours = 5.0,
+                    estHours = null,
+                    assessmentHours = null,
                     source = "community feed",
                     seenAt = now.minus(Duration.ofHours(5)),
                     note = "Platform you have never used. No settle-time history, so the days " +
@@ -126,8 +132,8 @@ class FixtureDiscoverySource(
         kind: String,
         pay: String,
         currency: Currency,
-        estHours: Double,
-        assessmentHours: Double,
+        estHours: Double?,
+        assessmentHours: Double?,
         source: String,
         seenAt: Instant,
         note: String

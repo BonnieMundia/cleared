@@ -3,6 +3,7 @@ package app.cleared.data
 import androidx.room.withTransaction
 import app.cleared.data.db.ClearedDatabase
 import app.cleared.data.db.entity.EarningRecordEntity
+import app.cleared.data.db.entity.DiscoveryScanEntity
 import app.cleared.data.db.entity.FxRateEntity
 import app.cleared.data.db.entity.ListingEntity
 import app.cleared.data.db.entity.PlatformEntity
@@ -19,6 +20,7 @@ import app.cleared.data.derive.PlatformStats
 import app.cleared.data.derive.RecordState
 import app.cleared.data.derive.SettleTime
 import app.cleared.data.derive.StageResolver
+import app.cleared.data.discovery.DiscoverySource
 import app.cleared.data.model.Currency
 import app.cleared.data.model.EventSource
 import app.cleared.data.model.Money
@@ -207,6 +209,67 @@ class ClearedRepository(private val db: ClearedDatabase) {
         recordId
     }
 
+    // ── Discovery ───────────────────────────────────────────────────────────────────────────────
+
+    fun observeListings(): Flow<List<ListingEntity>> = db.listingDao().observeAll()
+
+    fun observeLastScan(): Flow<DiscoveryScanEntity?> = db.discoveryScanDao().observe()
+
+    suspend fun listing(id: Long): ListingEntity? = db.listingDao().byId(id)
+
+    /**
+     * Runs a scan and stores what it found.
+     *
+     * A failed scan is not an error state for the screen: the previous results stay, and the scan
+     * row records why the refresh did not happen so Discover can say "last scanned at 09:14"
+     * instead of going blank. This is the same posture as the offline strip — a condition, stated,
+     * not a dialog.
+     */
+    suspend fun refreshDiscovery(source: DiscoverySource, at: Instant = Instant.now()) {
+        val result = runCatching { source.scan() }
+
+        result.onSuccess { scan ->
+            db.withTransaction {
+                db.listingDao().replaceScan(scan.listings)
+                db.discoveryScanDao().upsert(
+                    DiscoveryScanEntity(
+                        scannedAt = scan.scannedAt,
+                        boardCount = scan.boardCount,
+                        feedCount = scan.feedCount,
+                        lastError = null
+                    )
+                )
+            }
+        }.onFailure { error ->
+            val previous = db.discoveryScanDao().get()
+            db.discoveryScanDao().upsert(
+                DiscoveryScanEntity(
+                    scannedAt = previous?.scannedAt ?: at,
+                    boardCount = previous?.boardCount ?: 0,
+                    feedCount = previous?.feedCount ?: 0,
+                    lastError = error.message ?: "could not reach the sources"
+                )
+            )
+        }
+    }
+
+    /**
+     * Records the user's own estimate of how long a listing would take.
+     *
+     * No board publishes this and it is what the whole projection divides by, so it is kept across
+     * rescans — see `ListingDao.replaceScan`.
+     */
+    suspend fun estimateListingHours(listingId: Long, estHours: Double, assessmentHours: Double) {
+        val listing = db.listingDao().byId(listingId) ?: return
+        db.listingDao().update(
+            listing.copy(
+                estHours = estHours,
+                assessmentHours = assessmentHours,
+                hoursEstimatedByUser = true
+            )
+        )
+    }
+
     /**
      * Tracks a Discovery listing as a prospect.
      *
@@ -229,7 +292,8 @@ class ClearedRepository(private val db: ClearedDatabase) {
                 grossMinor = listing.statedPayMinor,
                 currency = listing.currency,
                 hoursWorked = 0.0,
-                hoursUnpaid = listing.assessmentHours,
+                // Only the assessment starts now; the work itself is not committed to yet.
+                hoursUnpaid = listing.assessmentHours ?: 0.0,
                 expectedWeekStart = LocalDate.ofInstant(at, NAIROBI)
                     .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)),
                 createdAt = at,
